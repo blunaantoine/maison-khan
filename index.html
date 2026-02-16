@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MAISON KHAN | Chaussures de Luxe Made in Africa</title>
+  <meta name="description" content="MAISON KHAN - Chaussures de luxe confectionnées au Togo. Made in Africa.">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@200;300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cream: '#F8F6F3',
+            sand: '#EDE8E1',
+            charcoal: '#0A0A0A',
+            stone: '#6B6560',
+            bronze: '#9C7C5C',
+            gold: '#C4A77D',
+            whatsapp: '#25D366'
+          },
+          fontFamily: {
+            display: ['Cormorant Garamond', 'serif'],
+            body: ['Outfit', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    :root {
+      --bg: #F8F6F3;
+      --fg: #0A0A0A;
+      --muted: #6B6560;
+      --accent: #9C7C5C;
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    
+    body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+    .font-display { font-family: 'Cormorant Garamond', serif; }
+    
+    /* Animations */
+    .animate-on-scroll {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 0.8s ease, transform 0.8s ease;
+    }
+    .animate-on-scroll.visible { opacity: 1; transform: translateY(0); }
+    .stagger-1 { transition-delay: 0.1s; }
+    .stagger-2 { transition-delay: 0.2s; }
+    .stagger-3 { transition-delay: 0.3s; }
+    
+    /* Hero */
+    .hero-title { font-size: clamp(3rem, 12vw, 10rem); font-weight: 300; line-height: 0.9; }
+    .hero-subtitle { font-size: clamp(0.75rem, 1.5vw, 0.875rem); letter-spacing: 0.3em; text-transform: uppercase; }
+    
+    /* Navigation */
+    .nav-link { position: relative; padding: 0.5rem 0; }
+    .nav-link::after {
+      content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 1px;
+      background: currentColor; transform: scaleX(0); transform-origin: right;
+      transition: transform 0.4s ease;
+    }
+    .nav-link:hover::after { transform: scaleX(1); transform-origin: left; }
+    
+    /* Menu Mobile */
+    .menu-overlay { position: fixed; inset: 0; background: #0A0A0A; z-index: 100; opacity: 0; visibility: hidden; transition: all 0.5s ease; }
+    .menu-overlay.active { opacity: 1; visibility: visible; }
+    .menu-overlay .nav-link { font-size: clamp(2rem, 6vw, 4rem); opacity: 0; transform: translateY(20px); transition: all 0.4s ease; }
+    .menu-overlay.active .nav-link { opacity: 1; transform: translateY(0); }
+    
+    /* Product Cards */
+    .product-card { position: relative; overflow: hidden; cursor: pointer; background: #E5E0DA; }
+    .product-card img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.8s ease; }
+    .product-card:hover img { transform: scale(1.05); }
+    
+    .product-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(to top, rgba(10,10,10,0.7) 0%, transparent 50%);
+      opacity: 0; transition: opacity 0.4s ease;
+    }
+    .product-card:hover .product-overlay { opacity: 1; }
+    
+    .product-info {
+      position: absolute; bottom: 0; left: 0; right: 0; padding: 1.5rem;
+      transform: translateY(20px); opacity: 0; transition: all 0.4s ease; color: #F8F6F3;
+    }
+    .product-card:hover .product-info { transform: translateY(0); opacity: 1; }
+    
+    /* Buttons */
+    .btn-primary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 2rem;
+      background: #0A0A0A; color: #F8F6F3; font-size: 0.75rem; font-weight: 500;
+      letter-spacing: 0.15em; text-transform: uppercase; text-decoration: none; border: none; cursor: pointer;
+      position: relative; overflow: hidden; z-index: 1; width: 100%;
+    }
+    .btn-primary::before {
+      content: ''; position: absolute; inset: 0; background: var(--accent);
+      transform: translateX(-100%); transition: transform 0.4s ease; z-index: -1;
+    }
+    .btn-primary:hover::before { transform: translateX(0); }
+    
+    .btn-whatsapp {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 2rem;
+      background: #25D366; color: #fff; font-size: 0.75rem; font-weight: 500;
+      letter-spacing: 0.15em; text-transform: uppercase; text-decoration: none; border: none; cursor: pointer;
+      transition: background 0.3s ease; width: 100%;
+    }
+    .btn-whatsapp:hover { background: #128C7E; }
+    
+    .btn-outline-dark {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 2rem;
+      background: transparent; color: #0A0A0A; font-size: 0.75rem; font-weight: 500;
+      letter-spacing: 0.15em; text-transform: uppercase; border: 1px solid #0A0A0A; cursor: pointer;
+      transition: all 0.3s ease; text-decoration: none; width: 100%;
+    }
+    .btn-outline-dark:hover { background: #0A0A0A; color: #F8F6F3; }
+    
+    .btn-outline {
+      display: inline-flex; align-items: center; gap: 0.75rem; padding: 1rem 2rem;
+      background: transparent; color: #0A0A0A; font-size: 0.75rem; font-weight: 500;
+      letter-spacing: 0.15em; text-transform: uppercase; border: 1px solid #0A0A0A; cursor: pointer;
+      transition: all 0.3s ease; text-decoration: none;
+    }
+    .btn-outline:hover { background: #0A0A0A; color: #F8F6F3; }
+    
+    /* Filter Tags */
+    .filter-tag {
+      padding: 0.5rem 1.25rem; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase;
+      background: transparent; color: var(--muted); border: 1px solid #E5E0DA; cursor: pointer; transition: all 0.3s ease;
+    }
+    .filter-tag:hover, .filter-tag.active { background: #0A0A0A; color: #F8F6F3; border-color: #0A0A0A; }
+    
+    /* Grain */
+    .grain::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.03; pointer-events: none;
+    }
+    
+    .section-divider { width: 60px; height: 1px; background: var(--accent); }
+    .page-section { display: none; }
+    .page-section.active { display: block; }
+    
+    /* Modals */
+    .modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,0.9); opacity: 0; visibility: hidden; transition: all 0.4s ease; }
+    .modal.active { opacity: 1; visibility: visible; }
+    .modal-content { width: 100%; max-width: 1200px; max-height: 90vh; background: #F8F6F3; overflow-y: auto; transform: scale(0.95); transition: transform 0.4s ease; }
+    .modal.active .modal-content { transform: scale(1); }
+    
+    /* No scrollbar */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Floating Cart Button */
+    .cart-fab {
+      position: fixed; bottom: 2rem; right: 2rem; width: 60px; height: 60px;
+      background: #0A0A0A; color: #F8F6F3; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3); cursor: pointer; z-index: 150;
+      transition: transform 0.3s ease, background 0.3s ease;
+    }
+    .cart-fab:hover { transform: scale(1.1); background: var(--accent); }
+    .cart-badge {
+      position: absolute; top: -5px; right: -5px; width: 24px; height: 24px;
+      background: #25D366; color: #fff; border-radius: 50%;
+      font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Header -->
+  <header class="fixed top-0 left-0 right-0 z-50 transition-all duration-500" id="header">
+    <div class="flex items-center justify-between px-6 lg:px-12 py-6">
+      <a href="#" class="flex items-center gap-3" data-nav="home">
+        <img src="logo.jpg" alt="MAISON KHAN Logo" class="h-12 w-auto object-contain">
+        <span class="font-display text-xl tracking-wider text-charcoal hidden">MAISON KHAN</span>
+      </a>
+      
+      <nav class="hidden lg:flex items-center gap-12">
+        <a href="#" class="nav-link text-xs font-medium tracking-widest uppercase text-charcoal" data-nav="home">Accueil</a>
+        <a href="#" class="nav-link text-xs font-medium tracking-widest uppercase text-charcoal" data-nav="collections">Collections</a>
+        <a href="#" class="nav-link text-xs font-medium tracking-widest uppercase text-charcoal" data-nav="catalogue">Chaussures</a>
+        <a href="#" class="nav-link text-xs font-medium tracking-widest uppercase text-charcoal" data-nav="maison">Notre Maison</a>
+        <a href="#" class="nav-link text-xs font-medium tracking-widest uppercase text-charcoal" data-nav="boutique">Boutique</a>
+        <a href="#" class="nav-link text-xs font-medium tracking-widest uppercase text-charcoal" data-nav="contact">Contact</a>
+      </nav>
+      
+      <button class="lg:hidden relative w-8 h-6 flex flex-col justify-between" id="menuToggle" aria-label="Menu">
+        <span class="w-full h-px bg-charcoal transition-all duration-300" id="menuLine1"></span>
+        <span class="w-full h-px bg-charcoal transition-all duration-300" id="menuLine2"></span>
+        <span class="w-full h-px bg-charcoal transition-all duration-300" id="menuLine3"></span>
+      </button>
+    </div>
+  </header>
+  
+  <!-- Mobile Menu -->
+  <div class="menu-overlay" id="menuOverlay">
+    <div class="flex flex-col items-center justify-center h-full gap-6">
+      <a href="#" class="nav-link font-display text-cream" data-nav="home">Accueil</a>
+      <a href="#" class="nav-link font-display text-cream" data-nav="collections">Collections</a>
+      <a href="#" class="nav-link font-display text-cream" data-nav="catalogue">Chaussures</a>
+      <a href="#" class="nav-link font-display text-cream" data-nav="maison">Notre Maison</a>
+      <a href="#" class="nav-link font-display text-cream" data-nav="boutique">Boutique</a>
+      <a href="#" class="nav-link font-display text-cream" data-nav="contact">Contact</a>
+    </div>
+  </div>
+  
+  <!-- Main -->
+  <main id="mainContent">
+    
+    <!-- HOME -->
+    <section class="page-section active" id="home">
+      <div class="relative min-h-screen flex items-center grain" style="background: linear-gradient(180deg, #F8F6F3 0%, #EDE8E1 100%);">
+        <div class="relative container mx-auto px-6 lg:px-12 pt-32 pb-20">
+          <div class="max-w-5xl">
+            <p class="hero-subtitle text-stone mb-6 animate-on-scroll">Made in Africa</p>
+            <h1 class="hero-title font-display text-charcoal mb-8 animate-on-scroll stagger-1">L'Art de la<br><span class="font-light">Marche</span></h1>
+            <p class="text-lg lg:text-xl text-stone max-w-xl mb-12 font-light leading-relaxed animate-on-scroll stagger-2">
+              Chaussures artisanales confectionnées en Afrique. Le savoir-faire Africain au service de l'élégance contemporaine.
+            </p>
+            <div class="flex flex-wrap gap-4 animate-on-scroll stagger-3">
+              <a href="#" class="btn-primary" data-nav="catalogue" style="width: auto;">
+                <span>Voir les créations</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+              </a>
+              <a href="https://wa.me/22870166767?text=Bonjour%20MAISON%20KHAN%2C%20je%20souhaite%20en%20savoir%20plus%20sur%20vos%20cr%C3%A9ations." target="_blank" rel="noopener" class="btn-outline">
+                <span>Nous contacter</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Featured Products -->
+      <div class="py-24 lg:py-32 bg-cream">
+        <div class="container mx-auto px-6 lg:px-12">
+          <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-16">
+            <div>
+              <p class="hero-subtitle text-bronze mb-4 animate-on-scroll">Sélection</p>
+              <h2 class="font-display text-4xl lg:text-5xl text-charcoal animate-on-scroll stagger-1">Pièces Iconiques</h2>
+            </div>
+          </div>
+          
+          <div class="flex gap-6 overflow-x-auto pb-8 snap-x snap-mandatory no-scrollbar">
+            <article class="product-card w-80 lg:w-96 aspect-[3/4] animate-on-scroll snap-start flex-shrink-0" data-product="1" tabindex="0">
+              <img src="bleu.jpg" alt="Mule Bleue" loading="lazy">
+              <div class="product-overlay"></div>
+              <div class="product-info">
+                <p class="text-xs tracking-widest uppercase opacity-70 mb-2">Édition Limitée</p>
+                <h3 class="font-display text-2xl mb-2">Mule Azur</h3>
+                <p class="text-sm opacity-80">Cuir grainé & ornements</p>
+                <p class="text-lg mt-3 font-display">85 000 FCFA</p>
+              </div>
+            </article>
+            
+            <article class="product-card w-80 lg:w-96 aspect-[3/4] animate-on-scroll stagger-1 snap-start flex-shrink-0" data-product="2" tabindex="0">
+              <img src="11.jpg" alt="Mule Tressée" loading="lazy">
+              <div class="product-overlay"></div>
+              <div class="product-info">
+                <p class="text-xs tracking-widest uppercase opacity-70 mb-2">Signature</p>
+                <h3 class="font-display text-2xl mb-2">Mule Tressée Terre</h3>
+                <p class="text-sm opacity-80">Cuir tressé main</p>
+                <p class="text-lg mt-3 font-display">72 000 FCFA</p>
+              </div>
+            </article>
+            
+            <article class="product-card w-80 lg:w-96 aspect-[3/4] animate-on-scroll stagger-2 snap-start flex-shrink-0" data-product="3" tabindex="0">
+              <img src="7.jpg" alt="Sandale Verte" loading="lazy">
+              <div class="product-overlay"></div>
+              <div class="product-info">
+                <p class="text-xs tracking-widest uppercase opacity-70 mb-2">Collection Été</p>
+                <h3 class="font-display text-2xl mb-2">Sandale Émeraude</h3>
+                <p class="text-sm opacity-80">Cuir souple & laiton</p>
+                <p class="text-lg mt-3 font-display">65 000 FCFA</p>
+              </div>
+            </article>
+            
+            <article class="product-card w-80 lg:w-96 aspect-[3/4] animate-on-scroll stagger-3 snap-start flex-shrink-0" data-product="4" tabindex="0">
+              <img src="9.jpg" alt="Ballerine Rouge" loading="lazy">
+              <div class="product-overlay"></div>
+              <div class="product-info">
+                <p class="text-xs tracking-widest uppercase opacity-70 mb-2">Essentiels</p>
+                <h3 class="font-display text-2xl mb-2">Ballerine Sienne</h3>
+                <p class="text-sm opacity-80">Tressage traditionnel</p>
+                <p class="text-lg mt-3 font-display">58 000 FCFA</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Brand Statement -->
+      <div class="relative py-32 lg:py-48 bg-charcoal text-cream grain overflow-hidden">
+        <div class="relative container mx-auto px-6 lg:px-12 text-center">
+          <div class="section-divider mx-auto mb-12 animate-on-scroll"></div>
+          <blockquote class="font-display text-3xl lg:text-5xl font-light leading-tight max-w-4xl mx-auto mb-12 animate-on-scroll stagger-1">
+            "L'excellence artisanale Africaine sur chaque pas que vous faites."
+          </blockquote>
+          <p class="text-sm tracking-widest uppercase text-stone animate-on-scroll stagger-2">MAISON KHAN</p>
+        </div>
+      </div>
+      
+    </section>
+    
+    <!-- COLLECTIONS -->
+    <section class="page-section" id="collections">
+      <div class="min-h-screen pt-32 pb-24 bg-cream">
+        <div class="container mx-auto px-6 lg:px-12">
+          <div class="max-w-3xl mb-20">
+            <p class="hero-subtitle text-bronze mb-4 animate-on-scroll">Nos Univers</p>
+            <h1 class="font-display text-5xl lg:text-7xl text-charcoal mb-8 animate-on-scroll stagger-1">Collections</h1>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <article class="group cursor-pointer animate-on-scroll" onclick="goTo('catalogue')">
+              <img src="11.jpg" alt="Brown leather braided mule shoe displayed from above on a neutral background, showcasing traditional handwoven craftsmanship with intricate rope-like texture details" loading="lazy">
+              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors">Héritage</h3>
+              <p class="text-sm text-stone mt-2">L'élégance intemporelle</p>
+            </article>
+            <article class="group cursor-pointer animate-on-scroll stagger-1" onclick="goTo('catalogue')">
+              <img src="10.jpg" alt="Brown leather braided mule shoe displayed from above on a neutral background, showcasing traditional handwoven craftsmanship with intricate rope-like texture details" loading="lazy">
+              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors">Tressage Artisanal</h3>
+            </article>
+            <article class="group cursor-pointer animate-on-scroll stagger-2" onclick="goTo('catalogue')">
+              <img src="12.jpg" alt="Brown leather braided mule shoe displayed from above on a neutral background, showcasing traditional handwoven craftsmanship with intricate rope-like texture details" loading="lazy">
+              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors">Lumière d'Afrique</h3>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- CATALOGUE -->
+    <section class="page-section" id="catalogue">
+      <div class="min-h-screen pt-32 pb-24 bg-cream">
+        <div class="container mx-auto px-6 lg:px-12">
+          <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12">
+            <div>
+              <p class="hero-subtitle text-bronze mb-4 animate-on-scroll">Catalogue</p>
+              <h1 class="font-display text-5xl lg:text-7xl text-charcoal animate-on-scroll stagger-1">Nos Chaussures</h1>
+            </div>
+            <div class="mt-8 lg:mt-0 animate-on-scroll stagger-2">
+              <div class="flex flex-wrap gap-3">
+                <button class="filter-tag active" data-filter="all">Tous</button>
+                <button class="filter-tag" data-filter="mules">Mules</button>
+                <button class="filter-tag" data-filter="sandales">Sandales</button>
+                <button class="filter-tag" data-filter="ballerines">Ballerines</button>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-8" id="productsGrid"></div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- MAISON -->
+    <section class="page-section" id="maison">
+      <div class="bg-cream">
+        <div class="relative min-h-[60vh] flex items-center justify-center grain">
+          <div class="absolute inset-0 bg-gradient-to-b from-sand to-cream"></div>
+          <div class="relative text-center px-6 pt-24">
+            <p class="hero-subtitle text-bronze mb-6 animate-on-scroll">Made in Africa</p>
+            <h1 class="font-display text-5xl lg:text-7xl text-charcoal animate-on-scroll stagger-1">Notre Maison</h1>
+          </div>
+        </div>
+        <div class="py-24 lg:py-32">
+          <div class="container mx-auto px-6 lg:px-12">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+              <div class="order-2 lg:order-1">
+                <div class="section-divider mb-8 animate-on-scroll"></div>
+                <h2 class="font-display text-3xl lg:text-4xl text-charcoal mb-8 animate-on-scroll stagger-1">L'Âme d'un Artisanat</h2>
+                <div class="space-y-6 text-stone leading-relaxed text-base lg:text-lg">
+                  <p class="animate-on-scroll stagger-2">MAISON KHAN n'est pas simplement une marque, c'est l'écho d'une passion transmise de génération en génération. Au cœur de Lomé, sous le soleil togolais, nos artisans insufflent une âme à chaque morceau de cuir.</p>
+                  <p class="animate-on-scroll stagger-3">Nous croyons que le luxe véritable a une odeur de sueur et de fierté, celle de mains expertes qui tressent, cousent et polissent pendant des heures.</p>
+                </div>
+              </div>
+              <div class="order-1 lg:order-2 animate-on-scroll">
+                <div class="w-full overflow-hidden">
+                  <img src="maison.jpg" alt="Artisan MAISON KHAN à Lomé" class="w-full h-auto object-cover" loading="lazy">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- BOUTIQUE -->
+    <section class="page-section" id="boutique">
+      <div class="min-h-screen pt-32 pb-24 bg-cream">
+        <div class="container mx-auto px-6 lg:px-12">
+          <div class="max-w-3xl mb-16">
+            <p class="hero-subtitle text-bronze mb-4 animate-on-scroll">Showroom</p>
+            <h1 class="font-display text-5xl lg:text-7xl text-charcoal mb-8 animate-on-scroll stagger-1">Notre Boutique</h1>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div class="aspect-square bg-sand animate-on-scroll flex flex-col items-center justify-center relative group">
+               <a href="https://maps.app.goo.gl/vkTQ3DPjAZuJDihs6" target="_blank" rel="noopener" class="absolute inset-0 z-10"></a>
+               <svg class="w-16 h-16 text-stone mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+               <p class="font-display text-2xl text-charcoal">Lomé, Togo</p>
+            </div>
+            <div class="animate-on-scroll stagger-1 space-y-8">
+              <div>
+                <h3 class="font-display text-2xl text-charcoal mb-4">Contact Direct</h3>
+                <p class="text-stone mb-4">WhatsApp : +228 70 16 67 67</p>
+                <a href="https://wa.me/22870166767" target="_blank" rel="noopener" class="btn-whatsapp" style="width: auto;"><span>Discuter</span></a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- CONTACT -->
+    <section class="page-section" id="contact">
+      <div class="min-h-screen pt-32 pb-24 bg-cream">
+        <div class="container mx-auto px-6 lg:px-12">
+          <div class="max-w-2xl mx-auto text-center">
+            <p class="hero-subtitle text-bronze mb-4 animate-on-scroll">Contact</p>
+            <h1 class="font-display text-5xl lg:text-7xl text-charcoal mb-12 animate-on-scroll stagger-1">Parlons-en</h1>
+            <div class="mb-12 animate-on-scroll stagger-2">
+              <a href="https://wa.me/22870166767" target="_blank" rel="noopener" class="btn-whatsapp" style="width: auto;"><span>Discuter sur WhatsApp</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+  </main>
+  
+  <!-- Footer -->
+  <footer class="bg-charcoal text-cream py-16">
+    <div class="container mx-auto px-6 lg:px-12 text-center">
+      <h4 class="font-display text-2xl mb-4">MAISON KHAN</h4>
+      <p class="text-stone text-sm mb-8">Chaussures de luxe artisanales<br>Made in Africa</p>
+      <p class="text-stone text-xs">2024 MAISON KHAN. Tous droits réservés.</p>
+    </div>
+  </footer>
+
+  <!-- FLOATING CART BUTTON -->
+  <div class="cart-fab" id="cartFab" onclick="openCart()">
+    <span class="cart-badge" id="cartBadge">0</span>
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+  </div>
+
+  <!-- PRODUCT MODAL -->
+  <div class="modal" id="productModal" aria-hidden="true">
+    <div class="modal-content relative">
+      <button class="absolute top-6 right-6 w-12 h-12 flex items-center justify-center text-charcoal z-10" id="closeModal">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+      <div class="grid grid-cols-1 lg:grid-cols-2">
+        <div class="aspect-square bg-sand">
+           <img id="modalImage" src="" alt="" class="w-full h-full object-cover">
+        </div>
+        <div class="p-8 lg:p-12">
+          <p class="hero-subtitle text-bronze mb-2" id="modalCategory">Cat</p>
+          <h2 class="font-display text-3xl lg:text-4xl text-charcoal mb-4" id="modalTitle">Titre</h2>
+          <p class="font-display text-2xl text-charcoal mb-6" id="modalPrice">Prix</p>
+          <p class="text-stone mb-8" id="modalDescription">Desc</p>
+          
+          <div class="space-y-6 mb-8">
+            <div>
+              <label class="block text-xs tracking-widest uppercase text-charcoal mb-3">Pointure</label>
+              <div class="flex flex-wrap gap-2" id="modalSizes"></div>
+            </div>
+          </div>
+          
+          <div class="space-y-3">
+             <!-- Ajout au panier -->
+             <button id="addToCartBtn" class="btn-primary">
+                <span>Ajouter au panier</span>
+             </button>
+             <!-- Commande rapide -->
+             <a href="#" id="directOrderBtn" class="btn-whatsapp">
+                <span>Commander rapidement</span>
+             </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CART MODAL -->
+  <div class="modal" id="cartModal" aria-hidden="true">
+    <div class="modal-content relative" style="max-width: 500px;">
+      <button class="absolute top-6 right-6 w-12 h-12 flex items-center justify-center text-charcoal z-10" onclick="closeCart()">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+      <div class="p-8">
+        <h2 class="font-display text-3xl text-charcoal mb-6">Votre Panier</h2>
+        <div id="cartItems" class="space-y-4 mb-8 max-h-60 overflow-y-auto">
+           <!-- Items dynamiques -->
+        </div>
+        <div id="cartEmpty" class="text-stone text-center py-8 hidden">
+           Votre panier est vide.
+        </div>
+        <div class="border-t border-stone/20 pt-6 space-y-3">
+           <a href="#" id="cartOrderBtn" class="btn-whatsapp">
+              <span>Commander via WhatsApp</span>
+           </a>
+           <button onclick="closeCart()" class="btn-outline-dark">
+              <span>Continuer mes achats</span>
+           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Data
+    const products = [
+      { id: 1, name: 'Mule Azur', category: 'mules', sub: 'Édition Limitée', price: '85 000 FCFA', priceNum: 85000, img: '6.jpg', desc: 'Mule en cuir grainé bleu marine.', sizes: ['36', '37', '38', '39', '40'] },
+      { id: 2, name: 'Mule Tressée', category: 'mules', sub: 'Signature', price: '72 000 FCFA', priceNum: 72000, img: '5.jpg', desc: 'Cuir tressé main.', sizes: ['36', '37', '38', '39', '40', '41'] },
+      { id: 3, name: 'Sandale Émeraude', category: 'sandales', sub: 'Collection Été', price: '65 000 FCFA', priceNum: 65000, img: '4.jpg', desc: 'Sandale cuir vert sauge.', sizes: ['36', '37', '38', '39', '40'] },
+      { id: 4, name: 'Ballerine Sienne', category: 'ballerines', sub: 'Essentiels', price: '58 000 FCFA', priceNum: 58000, img: '3.jpg', desc: 'Ballerine tressée.', sizes: ['36', '37', '38', '39', '40', '41'] },
+      { id: 5, name: 'Mule Cuir Lisse', category: 'mules', sub: 'Classiques', price: '68 000 FCFA', priceNum: 68000, img: '2.jpg', desc: 'Mule classique.', sizes: ['36', '37', '38', '39', '40'] },
+      { id: 6, name: 'Sandale Désert', category: 'sandales', sub: 'Collection Été', price: '62 000 FCFA', priceNum: 62000, img: '1.jpg', desc: 'Lanières croisées.', sizes: ['36', '37', '38', '39', '40'] }
+    ];
+
+    const whatsappNumber = '22870166767';
+    let cart = [];
+    let currentProduct = null;
+    let selectedSize = null;
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+      initNav();
+      initMenu();
+      initProducts();
+      initFilters();
+      initModal();
+      initScroll();
+      initHeader();
+    });
+
+    function initNav() {
+      document.querySelectorAll('[data-nav]').forEach(l => {
+        l.addEventListener('click', (e) => { e.preventDefault(); goTo(l.dataset.nav); });
+      });
+    }
+
+    function goTo(id) {
+      const targetSection = document.getElementById(id);
+      if (!targetSection) return;
+      document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+      targetSection.classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(initScroll, 100);
+    }
+
+    function initMenu() {
+      const btn = document.getElementById('menuToggle');
+      const ov = document.getElementById('menuOverlay');
+      btn.addEventListener('click', () => {
+        ov.classList.toggle('active');
+        document.body.style.overflow = ov.classList.contains('active') ? 'hidden' : '';
+      });
+    }
+
+    function initProducts() { renderProducts('all'); }
+
+    function renderProducts(f) {
+      const grid = document.getElementById('productsGrid');
+      const list = f === 'all' ? products : products.filter(p => p.category === f);
+      grid.innerHTML = list.map((p, i) => `
+        <article class="product-card aspect-[3/4] cursor-pointer animate-on-scroll stagger-${i%4}" data-id="${p.id}" tabindex="0">
+          <img src="${p.img}" alt="${p.name}" loading="lazy">
+          <div class="product-overlay"></div>
+          <div class="product-info">
+            <p class="text-xs tracking-widest uppercase opacity-70 mb-2">${p.sub}</p>
+            <h3 class="font-display text-xl mb-1">${p.name}</h3>
+            <p class="text-lg">${p.price}</p>
+          </div>
+        </article>
+      `).join('');
+      
+      document.querySelectorAll('[data-id]').forEach(c => {
+        c.addEventListener('click', () => openModal(parseInt(c.dataset.id)));
+      });
+      setTimeout(initScroll, 100);
+    }
+
+    function initFilters() {
+      document.querySelectorAll('[data-filter]').forEach(b => {
+        b.addEventListener('click', () => {
+          document.querySelectorAll('[data-filter]').forEach(x => x.classList.remove('active'));
+          b.classList.add('active');
+          renderProducts(b.dataset.filter);
+        });
+      });
+    }
+
+    function initModal() {
+      const m = document.getElementById('productModal');
+      document.getElementById('closeModal').addEventListener('click', () => { m.classList.remove('active'); document.body.style.overflow = ''; });
+      
+      // Add to cart button logic
+      document.getElementById('addToCartBtn').addEventListener('click', () => {
+         if (!currentProduct) return;
+         if (!selectedSize) {
+             alert("Veuillez sélectionner une pointure.");
+             return;
+         }
+         addToCart(currentProduct, selectedSize);
+         m.classList.remove('active');
+         document.body.style.overflow = '';
+      });
+    }
+
+    function openModal(id) {
+      const p = products.find(x => x.id === id);
+      if (!p) return;
+      
+      currentProduct = p;
+      selectedSize = null; // Reset selection
+      
+      document.getElementById('modalImage').src = p.img;
+      document.getElementById('modalTitle').textContent = p.name;
+      document.getElementById('modalCategory').textContent = p.sub;
+      document.getElementById('modalPrice').textContent = p.price;
+      document.getElementById('modalDescription').textContent = p.desc;
+      
+      // Render sizes as clickable buttons
+      const sizesContainer = document.getElementById('modalSizes');
+      sizesContainer.innerHTML = p.sizes.map(s => `
+        <button class="filter-tag" onclick="selectSize('${s}', this)">${s}</button>
+      `).join('');
+      
+      // Direct order link
+      const msg = encodeURIComponent(`Bonjour MAISON KHAN, je suis intéressé(e) par le modèle "${p.name}" (${p.price}).`);
+      document.getElementById('directOrderBtn').href = `https://wa.me/${whatsappNumber}?text=${msg}`;
+      
+      const m = document.getElementById('productModal');
+      m.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function selectSize(size, btn) {
+        selectedSize = size;
+        // Visual feedback
+        document.querySelectorAll('#modalSizes .filter-tag').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    // --- CART LOGIC ---
+
+    function addToCart(product, size) {
+        // Check if already exists
+        const existing = cart.find(item => item.id === product.id && item.size === size);
+        if (existing) {
+            existing.qty++;
+        } else {
+            cart.push({
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                size: size,
+                qty: 1
+            });
+        }
+        updateCartUI();
+    }
+
+    function updateCartUI() {
+        const badge = document.getElementById('cartBadge');
+        const count = cart.reduce((sum, item) => sum + item.qty, 0);
+        
+        if (count > 0) {
+            badge.style.display = 'flex';
+            badge.textContent = count;
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    function openCart() {
+        const itemsContainer = document.getElementById('cartItems');
+        const emptyMsg = document.getElementById('cartEmpty');
+        const orderBtn = document.getElementById('cartOrderBtn');
+        
+        if (cart.length === 0) {
+            itemsContainer.innerHTML = '';
+            emptyMsg.classList.remove('hidden');
+            orderBtn.style.display = 'none';
+        } else {
+            emptyMsg.classList.add('hidden');
+            orderBtn.style.display = 'flex';
+            
+            itemsContainer.innerHTML = cart.map((item, index) => `
+                <div class="flex justify-between items-center border-b border-stone/10 pb-3">
+                    <div>
+                        <p class="font-display text-lg text-charcoal">${item.name}</p>
+                        <p class="text-xs text-stone">Taille: ${item.size} | ${item.price}</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm font-bold">${item.qty}x</span>
+                        <button onclick="removeFromCart(${index})" class="text-red-500 hover:text-red-700 text-xs uppercase tracking-wider">Suppr.</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Generate WhatsApp link for full cart
+            let message = "Bonjour MAISON KHAN, je souhaite commander :\n";
+            cart.forEach(item => {
+                message += `- ${item.name} (Taille: ${item.size}) x${item.qty}\n`;
+            });
+            const encodedMsg = encodeURIComponent(message);
+            orderBtn.href = `https://wa.me/${whatsappNumber}?text=${encodedMsg}`;
+        }
+        
+        document.getElementById('cartModal').classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeCart() {
+        document.getElementById('cartModal').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    function removeFromCart(index) {
+        cart.splice(index, 1);
+        updateCartUI();
+        openCart(); // Refresh view
+    }
+
+    function initScroll() {
+      const obs = new IntersectionObserver((ents) => {
+        ents.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+      }, { threshold: 0.1 });
+      document.querySelectorAll('.animate-on-scroll').forEach(el => obs.observe(el));
+    }
+
+    function initHeader() {
+      const h = document.getElementById('header');
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 100) {
+          h.style.background = 'rgba(248, 246, 243, 0.95)'; h.style.backdropFilter = 'blur(10px)';
+        } else {
+          h.style.background = 'transparent'; h.style.backdropFilter = 'none';
+        }
+      });
+    }
+  </script>
+</body>
+</html>
