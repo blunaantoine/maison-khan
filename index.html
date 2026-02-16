@@ -183,8 +183,10 @@
   <header class="fixed top-0 left-0 right-0 z-50 transition-all duration-500" id="header">
     <div class="flex items-center justify-between px-6 lg:px-12 py-6">
       <a href="#" class="flex items-center gap-3" data-nav="home">
-        <img src="logo.png" alt="MAISON KHAN Logo" class="h-12 w-auto object-contain">
-        <span class="font-display text-xl tracking-wider text-charcoal hidden">MAISON KHAN</span>
+        <!-- AJOUT DE fetchpriority="high" pour charger le logo vite -->
+        <img src="logo.png" alt="MAISON KHAN Logo" class="h-12 w-auto object-contain" fetchpriority="high">
+        <!-- CORRECTION: 'hidden' retiré et taille ajustée pour mobile -->
+        <span class="font-display text-base sm:text-xl tracking-wider text-charcoal">MAISON KHAN</span>
       </a>
       
       <nav class="hidden lg:flex items-center gap-12">
@@ -253,8 +255,9 @@
           </div>
           
           <div class="flex gap-6 overflow-x-auto pb-8 snap-x snap-mandatory no-scrollbar">
+            <!-- CORRECTION IMAGES: Retrait de loading="lazy" pour les images visibles immédiatement -->
             <article class="product-card w-80 lg:w-96 aspect-[3/4] animate-on-scroll snap-start flex-shrink-0" data-product="1" tabindex="0">
-              <img src="bleu.jpg" alt="Mule Bleue" loading="lazy">
+              <img src="bleu.jpg" alt="Mule Bleue">
               <div class="product-overlay"></div>
               <div class="product-info">
                 <p class="text-xs tracking-widest uppercase opacity-70 mb-2">Édition Limitée</p>
@@ -265,7 +268,7 @@
             </article>
             
             <article class="product-card w-80 lg:w-96 aspect-[3/4] animate-on-scroll stagger-1 snap-start flex-shrink-0" data-product="2" tabindex="0">
-              <img src="11.jpg" alt="Mule Tressée" loading="lazy">
+              <img src="11.jpg" alt="Mule Tressée">
               <div class="product-overlay"></div>
               <div class="product-info">
                 <p class="text-xs tracking-widest uppercase opacity-70 mb-2">Signature</p>
@@ -274,7 +277,7 @@
                 <p class="text-lg mt-3 font-display">72 000 FCFA</p>
               </div>
             </article>
-            
+
             <article class="product-card w-80 lg:w-96 aspect-[3/4] animate-on-scroll stagger-2 snap-start flex-shrink-0" data-product="3" tabindex="0">
               <img src="7.jpg" alt="Sandale Verte" loading="lazy">
               <div class="product-overlay"></div>
@@ -323,17 +326,17 @@
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <article class="group cursor-pointer animate-on-scroll" onclick="goTo('catalogue')">
-              <img src="11.jpg" alt="Brown leather braided mule shoe displayed from above on a neutral background, showcasing traditional handwoven craftsmanship with intricate rope-like texture details" loading="lazy">
-              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors">Héritage</h3>
+              <img src="11.jpg" alt="Collection Héritage" loading="lazy">
+              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors mt-4">Héritage</h3>
               <p class="text-sm text-stone mt-2">L'élégance intemporelle</p>
             </article>
             <article class="group cursor-pointer animate-on-scroll stagger-1" onclick="goTo('catalogue')">
-              <img src="10.jpg" alt="Brown leather braided mule shoe displayed from above on a neutral background, showcasing traditional handwoven craftsmanship with intricate rope-like texture details" loading="lazy">
-              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors">Tressage Artisanal</h3>
+              <img src="10.jpg" alt="Collection Tressage" loading="lazy">
+              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors mt-4">Tressage Artisanal</h3>
             </article>
             <article class="group cursor-pointer animate-on-scroll stagger-2" onclick="goTo('catalogue')">
-              <img src="12.jpg" alt="Brown leather braided mule shoe displayed from above on a neutral background, showcasing traditional handwoven craftsmanship with intricate rope-like texture details" loading="lazy">
-              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors">Lumière d'Afrique</h3>
+              <img src="12.jpg" alt="Collection Lumière" loading="lazy">
+              <h3 class="font-display text-2xl text-charcoal group-hover:text-bronze transition-colors mt-4">Lumière d'Afrique</h3>
             </article>
           </div>
         </div>
@@ -546,7 +549,17 @@
 
     function initNav() {
       document.querySelectorAll('[data-nav]').forEach(l => {
-        l.addEventListener('click', (e) => { e.preventDefault(); goTo(l.dataset.nav); });
+        l.addEventListener('click', (e) => {
+            e.preventDefault();
+            goTo(l.dataset.nav);
+            
+            // Fermeture du menu mobile après clic
+            const menuOverlay = document.getElementById('menuOverlay');
+            if (menuOverlay.classList.contains('active')) {
+                menuOverlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
       });
     }
 
@@ -753,6 +766,4 @@
     }
   </script>
 </body>
-
 </html>
-
