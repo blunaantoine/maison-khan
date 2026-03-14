@@ -1,7 +1,148 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { createPortal } from 'react-dom'
+
+// Auth Form Component - Separate to prevent re-renders
+interface AuthFormProps {
+  mode: 'login' | 'register'
+  onSubmit: (data: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }) => void
+  onForgotPassword: (email: string) => void
+  onSwitchMode: () => void
+  showPassword: boolean
+  onTogglePassword: () => void
+  forgotPasswordLoading: boolean
+}
+
+const AuthForm = memo(function AuthForm({ 
+  mode, 
+  onSubmit, 
+  onForgotPassword, 
+  onSwitchMode, 
+  showPassword, 
+  onTogglePassword,
+  forgotPasswordLoading 
+}: AuthFormProps) {
+  const emailRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const firstNameRef = useRef<HTMLInputElement>(null)
+  const lastNameRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const data = {
+      email: emailRef.current?.value || '',
+      password: passwordRef.current?.value || '',
+      firstName: firstNameRef.current?.value,
+      lastName: lastNameRef.current?.value,
+      phone: phoneRef.current?.value
+    }
+    onSubmit(data)
+  }
+
+  const handleForgotPassword = () => {
+    onForgotPassword(emailRef.current?.value || '')
+  }
+
+  return (
+    <>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {mode === 'register' && (
+          <div className="grid grid-cols-2 gap-4">
+            <input
+              ref={firstNameRef}
+              type="text"
+              name="firstName"
+              placeholder="Prénom"
+              autoComplete="given-name"
+              className="w-full p-3 border border-[#E5E0DA] bg-white"
+            />
+            <input
+              ref={lastNameRef}
+              type="text"
+              name="lastName"
+              placeholder="Nom"
+              autoComplete="family-name"
+              className="w-full p-3 border border-[#E5E0DA] bg-white"
+            />
+          </div>
+        )}
+        <input
+          ref={emailRef}
+          type="email"
+          name="email"
+          placeholder="Email"
+          required
+          autoComplete="email"
+          className="w-full p-3 border border-[#E5E0DA] bg-white"
+        />
+        <div className="relative">
+          <input
+            ref={passwordRef}
+            type={showPassword ? "text" : "password"}
+            name="password"
+            placeholder="Mot de passe"
+            required
+            autoComplete="current-password"
+            className="w-full p-3 pr-12 border border-[#E5E0DA] bg-white"
+          />
+          <button 
+            type="button"
+            onClick={onTogglePassword} 
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6560] hover:text-[#0A0A0A] transition-colors"
+          >
+            {showPassword ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            )}
+          </button>
+        </div>
+        {mode === 'register' && (
+          <input
+            ref={phoneRef}
+            type="tel"
+            name="phone"
+            placeholder="Téléphone"
+            autoComplete="tel"
+            className="w-full p-3 border border-[#E5E0DA] bg-white"
+          />
+        )}
+        <button type="submit" className="w-full bg-[#9C7C5C] text-white py-3 uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors">
+          {mode === 'login' ? 'Se connecter' : 'Créer le compte'}
+        </button>
+      </form>
+      
+      {/* Mot de passe oublié */}
+      {mode === 'login' && (
+        <div className="mt-3 text-center">
+          <button
+            onClick={handleForgotPassword}
+            disabled={forgotPasswordLoading}
+            className="text-[#9C7C5C] hover:text-[#8B6B4B] text-sm underline disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {forgotPasswordLoading ? 'Envoi en cours...' : 'Mot de passe oublié ?'}
+          </button>
+        </div>
+      )}
+      
+      <div className="mt-4 text-center">
+        <button
+          onClick={onSwitchMode}
+          className="text-[#6B6560] hover:text-[#0A0A0A] text-sm"
+        >
+          {mode === 'login' ? "Pas encore de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
+        </button>
+      </div>
+    </>
+  )
+})
 
 // Types
 interface ColorSize {
@@ -273,6 +414,12 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const [siteContent, setSiteContent] = useState<SiteContent[]>([])
+  const [mounted, setMounted] = useState(false)
+  
+  // Set mounted on client side
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   
   // Admin Users State
   const [adminUsers, setAdminUsers] = useState<User[]>([])
@@ -291,18 +438,6 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  const [authForm, setAuthForm] = useState({
-    email: '',
-    password: '',
-    firstName: '',
-    lastName: '',
-    phone: ''
-  })
-  
-  // Auth form handlers - stable references
-  const handleAuthChange = useCallback((field: string, value: string) => {
-    setAuthForm(prev => ({ ...prev, [field]: value }))
-  }, [])
   
   // Dashboard State
   const [showUserDashboard, setShowUserDashboard] = useState(false)
@@ -398,52 +533,6 @@ export default function Home() {
   const getContent = (key: string, defaultValue: string = ''): string => {
     const content = siteContent.find(c => c.key === key)
     return content?.value || defaultValue
-  }
-
-  // Auth functions
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: authForm.email, password: authForm.password })
-      })
-      const data = await res.json()
-      if (res.ok) {
-        localStorage.setItem('user', JSON.stringify(data.user))
-        setUser(data.user)
-        setShowAuthModal(false)
-        setAuthForm({ email: '', password: '', firstName: '', lastName: '', phone: '' })
-        showToast('Bienvenue', `Connexion réussie`)
-      } else {
-        showToast('Erreur', data.error || 'Erreur de connexion', 'error')
-      }
-    } catch {
-      showToast('Erreur', 'Erreur de connexion', 'error')
-    }
-  }
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authForm)
-      })
-      const data = await res.json()
-      if (res.ok) {
-        localStorage.setItem('user', JSON.stringify(data.user))
-        setUser(data.user)
-        setShowAuthModal(false)
-        showToast('Bienvenue', 'Compte créé avec succès')
-      } else {
-        showToast('Erreur', data.error || 'Erreur lors de l\'inscription', 'error')
-      }
-    } catch {
-      showToast('Erreur', 'Erreur lors de l\'inscription', 'error')
-    }
   }
 
   const handleChangePassword = async () => {
@@ -1066,11 +1155,84 @@ export default function Home() {
     }))
   }
 
-  // Auth Modal Component
-  const AuthModal = () => {
+  // Auth Modal Content
+  const authModalContent = useMemo(() => {
     if (!showAuthModal) return null
     
-    return createPortal(
+    const handleAuthSubmit = async (data: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }) => {
+      if (authMode === 'login') {
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: data.email, password: data.password })
+          })
+          const resData = await res.json()
+          if (res.ok) {
+            localStorage.setItem('user', JSON.stringify(resData.user))
+            setUser(resData.user)
+            setShowAuthModal(false)
+            showToast('Bienvenue', `Connexion réussie`)
+          } else {
+            showToast('Erreur', resData.error || 'Erreur de connexion', 'error')
+          }
+        } catch {
+          showToast('Erreur', 'Erreur de connexion', 'error')
+        }
+      } else {
+        try {
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          })
+          const resData = await res.json()
+          if (res.ok) {
+            localStorage.setItem('user', JSON.stringify(resData.user))
+            setUser(resData.user)
+            setShowAuthModal(false)
+            showToast('Bienvenue', 'Compte créé avec succès')
+          } else {
+            showToast('Erreur', resData.error || 'Erreur lors de l\'inscription', 'error')
+          }
+        } catch {
+          showToast('Erreur', 'Erreur lors de l\'inscription', 'error')
+        }
+      }
+    }
+    
+    const handleForgotPasswordClick = async (email: string) => {
+      if (!email) {
+        showToast('Erreur', 'Veuillez entrer votre email d\'abord', 'error')
+        return
+      }
+      if (forgotPasswordLoading) return
+      
+      setForgotPasswordLoading(true)
+      try {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        })
+        const data = await res.json()
+        
+        if (data.error) {
+          showToast('Erreur', data.error, 'error')
+        } else if (data.newPassword) {
+          showToast('Mot de passe généré', `Nouveau mot de passe: ${data.newPassword}`, 'success')
+        } else {
+          showToast('Succès', data.message || 'Un nouveau mot de passe a été envoyé à votre email', 'success')
+        }
+      } catch (err) {
+        console.error('Forgot password error:', err)
+        showToast('Erreur', 'Erreur de connexion. Veuillez réessayer.', 'error')
+      } finally {
+        setForgotPasswordLoading(false)
+      }
+    }
+    
+    return (
       <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setShowAuthModal(false)}>
         <div className="bg-[#F8F6F3] w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
           <div className="flex justify-between items-center mb-6">
@@ -1084,139 +1246,19 @@ export default function Home() {
             </button>
           </div>
           
-          <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="space-y-4">
-            {authMode === 'register' && (
-              <div className="grid grid-cols-2 gap-4">
-                <input
-                  type="text"
-                  name="firstName"
-                  placeholder="Prénom"
-                  autoComplete="given-name"
-                  value={authForm.firstName}
-                  onChange={e => handleAuthChange('firstName', e.target.value)}
-                  className="w-full p-3 border border-[#E5E0DA] bg-white"
-                />
-                <input
-                  type="text"
-                  name="lastName"
-                  placeholder="Nom"
-                  autoComplete="family-name"
-                  value={authForm.lastName}
-                  onChange={e => handleAuthChange('lastName', e.target.value)}
-                  className="w-full p-3 border border-[#E5E0DA] bg-white"
-                />
-              </div>
-            )}
-            <input
-              type="email"
-              name="email"
-              placeholder="Email"
-              required
-              autoComplete="email"
-              value={authForm.email}
-              onChange={e => handleAuthChange('email', e.target.value)}
-              className="w-full p-3 border border-[#E5E0DA] bg-white"
-            />
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                placeholder="Mot de passe"
-                required
-                autoComplete="current-password"
-                value={authForm.password}
-                onChange={e => handleAuthChange('password', e.target.value)}
-                className="w-full p-3 pr-12 border border-[#E5E0DA] bg-white"
-              />
-              <button 
-                type="button"
-                onClick={() => setShowPassword(!showPassword)} 
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6560] hover:text-[#0A0A0A] transition-colors"
-              >
-                {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
-            </div>
-            {authMode === 'register' && (
-              <input
-                type="tel"
-                name="phone"
-                placeholder="Téléphone"
-                autoComplete="tel"
-                value={authForm.phone}
-                onChange={e => handleAuthChange('phone', e.target.value)}
-                className="w-full p-3 border border-[#E5E0DA] bg-white"
-              />
-            )}
-            <button type="submit" className="w-full bg-[#9C7C5C] text-white py-3 uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors">
-              {authMode === 'login' ? 'Se connecter' : 'Créer le compte'}
-            </button>
-          </form>
-          
-          {/* Mot de passe oublié */}
-          {authMode === 'login' && (
-            <div className="mt-3 text-center">
-              <button
-                onClick={async () => {
-                  if (!authForm.email) {
-                    showToast('Erreur', 'Veuillez entrer votre email d\'abord', 'error')
-                    return
-                  }
-                  if (forgotPasswordLoading) return
-                  
-                  setForgotPasswordLoading(true)
-                  try {
-                    const res = await fetch('/api/auth/forgot-password', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ email: authForm.email })
-                    })
-                    const data = await res.json()
-                    
-                    if (data.error) {
-                      showToast('Erreur', data.error, 'error')
-                    } else if (data.newPassword) {
-                      // Si l'email n'a pas pu être envoyé, afficher le mot de passe
-                      showToast('Mot de passe généré', `Nouveau mot de passe: ${data.newPassword}`, 'success')
-                    } else {
-                      showToast('Succès', data.message || 'Un nouveau mot de passe a été envoyé à votre email', 'success')
-                    }
-                  } catch (err) {
-                    console.error('Forgot password error:', err)
-                    showToast('Erreur', 'Erreur de connexion. Veuillez réessayer.', 'error')
-                  } finally {
-                    setForgotPasswordLoading(false)
-                  }
-                }}
-                disabled={forgotPasswordLoading}
-                className="text-[#9C7C5C] hover:text-[#8B6B4B] text-sm underline disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {forgotPasswordLoading ? 'Envoi en cours...' : 'Mot de passe oublié ?'}
-              </button>
-            </div>
-          )}
-          
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-              className="text-[#6B6560] hover:text-[#0A0A0A] text-sm"
-            >
-              {authMode === 'login' ? "Pas encore de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
-            </button>
-          </div>
+          <AuthForm
+            mode={authMode}
+            onSubmit={handleAuthSubmit}
+            onForgotPassword={handleForgotPasswordClick}
+            onSwitchMode={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword(!showPassword)}
+            forgotPasswordLoading={forgotPasswordLoading}
+          />
         </div>
-      </div>,
-      document.body
+      </div>
     )
-  }
+  }, [showAuthModal, authMode, showPassword, forgotPasswordLoading, showToast, setUser, setShowAuthModal, setAuthMode, setShowPassword, setForgotPasswordLoading])
 
   // Checkout Modal
   const CheckoutModal = () => {
@@ -3205,7 +3247,7 @@ export default function Home() {
       </footer>
 
       {/* Product Modal */}
-      {showProductModal && currentProduct && createPortal(
+      {mounted && showProductModal && currentProduct && createPortal(
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={() => setShowProductModal(false)}>
           <div className="bg-[#F8F6F3] w-full max-w-4xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
@@ -3344,7 +3386,7 @@ export default function Home() {
       )}
 
       {/* Cart Modal */}
-      {showCartModal && createPortal(
+      {mounted && showCartModal && createPortal(
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={() => setShowCartModal(false)}>
           <div className="bg-[#F8F6F3] w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="p-8">
@@ -3382,7 +3424,7 @@ export default function Home() {
       )}
 
       {/* Admin Login Modal */}
-      {showAdminModal && createPortal(
+      {mounted && showAdminModal && createPortal(
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={() => { setShowAdminModal(false); setAdminPassword(''); setShowPassword(false) }}>
           <div className="bg-white w-full max-w-md p-8 text-center" onClick={e => e.stopPropagation()}>
             <h2 className="font-display text-2xl mb-4" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Administration</h2>
@@ -3403,7 +3445,8 @@ export default function Home() {
       )}
 
       {/* Product Form Modal - Simplified */}
-      {showProductFormModal && createPortal(
+      {/* Product Form Modal */}
+      {mounted && showProductFormModal && createPortal(
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={closeProductForm}>
           <div className="bg-[#F8F6F3] w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-8">
@@ -3724,7 +3767,8 @@ export default function Home() {
       )}
       
       {/* Subcategory Modal */}
-      {showSubCatModal && createPortal(
+      {/* Sub Category Modal */}
+      {mounted && showSubCatModal && createPortal(
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={() => setShowSubCatModal(false)}>
           <div className="bg-[#F8F6F3] w-full max-w-md p-8" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
@@ -3848,13 +3892,13 @@ export default function Home() {
       )}
       
       {/* Auth Modal */}
-      <AuthModal />
+      {mounted && createPortal(authModalContent, document.body)}
       
       {/* Checkout Modal */}
       <CheckoutModal />
       
       {/* Toast Notifications */}
-      {toasts.length > 0 && createPortal(
+      {mounted && toasts.length > 0 && createPortal(
         <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2">
           {toasts.map((t) => (
             <div key={t.id} className={`px-4 py-3 rounded-lg shadow-lg min-w-[280px] max-w-[400px] ${t.type === 'error' ? 'bg-red-600 text-white' : 'bg-[#9C7C5C] text-white'}`}>
