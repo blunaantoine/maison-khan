@@ -473,6 +473,19 @@ export default function Home() {
     quantity: number
   } | null>(null)
   
+  // Pre-fill checkout form when user is logged in
+  useEffect(() => {
+    if (user && showCheckoutModal) {
+      setCheckoutForm(prev => ({
+        ...prev,
+        email: user.email || prev.email,
+        phone: user.phone || prev.phone,
+        firstName: user.firstName || prev.firstName,
+        lastName: user.lastName || prev.lastName
+      }))
+    }
+  }, [user, showCheckoutModal])
+  
   // Checkout form handler - stable reference
   const handleCheckoutChange = useCallback((field: string, value: string) => {
     setCheckoutForm(prev => ({ ...prev, [field]: value }))
@@ -797,7 +810,6 @@ export default function Home() {
     if (items.length === 0) return
     
     const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
-    const shippingCost = checkoutForm.city ? 2000 : 0
     
     try {
       const res = await fetch('/api/orders', {
@@ -826,8 +838,8 @@ export default function Home() {
             phone: checkoutForm.phone
           },
           subtotal,
-          shippingCost,
-          total: subtotal + shippingCost,
+          shippingCost: 0,
+          total: subtotal,
           paymentMethod: 'cinetpay'
         })
       })
@@ -1276,8 +1288,7 @@ export default function Home() {
     }] : cart
     
     const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.qty, 0)
-    const shippingCost = checkoutForm.city ? 2000 : 0
-    const total = subtotal + shippingCost
+    const total = subtotal
     
     return createPortal(
       <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setShowCheckoutModal(false)}>
@@ -1421,7 +1432,7 @@ export default function Home() {
                   </div>
                   <div className="flex justify-between">
                     <span>Livraison</span>
-                    <span>{shippingCost > 0 ? formatPrice(shippingCost) : 'Gratuit'}</span>
+                    <span>Gratuit</span>
                   </div>
                   <div className="flex justify-between font-bold text-lg pt-2 border-t border-[#E5E0DA]">
                     <span>Total</span>
@@ -1463,7 +1474,7 @@ export default function Home() {
                               phone: checkoutForm.phone || user?.phone
                             },
                             subtotal,
-                            shippingCost,
+                            shippingCost: 0,
                             total,
                             paymentMethod: 'cash'
                           })
