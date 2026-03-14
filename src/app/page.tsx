@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 
 // Types
@@ -299,6 +299,11 @@ export default function Home() {
     phone: ''
   })
   
+  // Auth form handlers - stable references
+  const handleAuthChange = useCallback((field: string, value: string) => {
+    setAuthForm(prev => ({ ...prev, [field]: value }))
+  }, [])
+  
   // Dashboard State
   const [showUserDashboard, setShowUserDashboard] = useState(false)
   const [dashboardTab, setDashboardTab] = useState<string>('orders')
@@ -316,6 +321,14 @@ export default function Home() {
   // Checkout State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState<'info' | 'shipping' | 'payment'>('info')
+  const [checkoutForm, setCheckoutForm] = useState({
+    email: '',
+    phone: '',
+    firstName: '',
+    lastName: '',
+    city: '',
+    address: ''
+  })
   const [directOrder, setDirectOrder] = useState<{
     product: Product
     size: string
@@ -324,6 +337,11 @@ export default function Home() {
     price: number
     quantity: number
   } | null>(null)
+  
+  // Checkout form handler - stable reference
+  const handleCheckoutChange = useCallback((field: string, value: string) => {
+    setCheckoutForm(prev => ({ ...prev, [field]: value }))
+  }, [])
   
   // Product modal - selected color
   const [selectedColorValue, setSelectedColorValue] = useState<string | null>(null)
@@ -1075,7 +1093,7 @@ export default function Home() {
                   placeholder="Prénom"
                   autoComplete="given-name"
                   value={authForm.firstName}
-                  onChange={e => setAuthForm({...authForm, firstName: e.target.value})}
+                  onChange={e => handleAuthChange('firstName', e.target.value)}
                   className="w-full p-3 border border-[#E5E0DA] bg-white"
                 />
                 <input
@@ -1084,7 +1102,7 @@ export default function Home() {
                   placeholder="Nom"
                   autoComplete="family-name"
                   value={authForm.lastName}
-                  onChange={e => setAuthForm({...authForm, lastName: e.target.value})}
+                  onChange={e => handleAuthChange('lastName', e.target.value)}
                   className="w-full p-3 border border-[#E5E0DA] bg-white"
                 />
               </div>
@@ -1096,7 +1114,7 @@ export default function Home() {
               required
               autoComplete="email"
               value={authForm.email}
-              onChange={e => setAuthForm({...authForm, email: e.target.value})}
+              onChange={e => handleAuthChange('email', e.target.value)}
               className="w-full p-3 border border-[#E5E0DA] bg-white"
             />
             <div className="relative">
@@ -1107,7 +1125,7 @@ export default function Home() {
                 required
                 autoComplete="current-password"
                 value={authForm.password}
-                onChange={e => setAuthForm({...authForm, password: e.target.value})}
+                onChange={e => handleAuthChange('password', e.target.value)}
                 className="w-full p-3 pr-12 border border-[#E5E0DA] bg-white"
               />
               <button 
@@ -1134,7 +1152,7 @@ export default function Home() {
                 placeholder="Téléphone"
                 autoComplete="tel"
                 value={authForm.phone}
-                onChange={e => setAuthForm({...authForm, phone: e.target.value})}
+                onChange={e => handleAuthChange('phone', e.target.value)}
                 className="w-full p-3 border border-[#E5E0DA] bg-white"
               />
             )}
@@ -1261,7 +1279,7 @@ export default function Home() {
                     required
                     autoComplete="email"
                     value={checkoutForm.email || user?.email || ''}
-                    onChange={e => setCheckoutForm({...checkoutForm, email: e.target.value})}
+                    onChange={e => handleCheckoutChange('email', e.target.value)}
                     className="p-3 border border-[#E5E0DA]"
                   />
                   <input
@@ -1271,7 +1289,7 @@ export default function Home() {
                     required
                     autoComplete="tel"
                     value={checkoutForm.phone || user?.phone || ''}
-                    onChange={e => setCheckoutForm({...checkoutForm, phone: e.target.value})}
+                    onChange={e => handleCheckoutChange('phone', e.target.value)}
                     className="p-3 border border-[#E5E0DA]"
                   />
                   <input
@@ -1280,7 +1298,7 @@ export default function Home() {
                     placeholder="Prénom"
                     autoComplete="given-name"
                     value={checkoutForm.firstName || user?.firstName || ''}
-                    onChange={e => setCheckoutForm({...checkoutForm, firstName: e.target.value})}
+                    onChange={e => handleCheckoutChange('firstName', e.target.value)}
                     className="p-3 border border-[#E5E0DA]"
                   />
                   <input
@@ -1289,7 +1307,7 @@ export default function Home() {
                     placeholder="Nom"
                     autoComplete="family-name"
                     value={checkoutForm.lastName || user?.lastName || ''}
-                    onChange={e => setCheckoutForm({...checkoutForm, lastName: e.target.value})}
+                    onChange={e => handleCheckoutChange('lastName', e.target.value)}
                     className="p-3 border border-[#E5E0DA]"
                   />
                 </div>
@@ -1312,7 +1330,7 @@ export default function Home() {
                   required
                   autoComplete="address-level2"
                   value={checkoutForm.city}
-                  onChange={e => setCheckoutForm({...checkoutForm, city: e.target.value})}
+                  onChange={e => handleCheckoutChange('city', e.target.value)}
                   className="w-full p-3 border border-[#E5E0DA]"
                 />
                 <textarea
@@ -1321,7 +1339,7 @@ export default function Home() {
                   required
                   autoComplete="street-address"
                   value={checkoutForm.address}
-                  onChange={e => setCheckoutForm({...checkoutForm, address: e.target.value})}
+                  onChange={e => handleCheckoutChange('address', e.target.value)}
                   className="w-full p-3 border border-[#E5E0DA] h-24"
                 />
                 <div className="flex gap-4">
