@@ -311,6 +311,7 @@ export default function Home() {
   })
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
   
   // Checkout State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
@@ -1148,9 +1149,12 @@ export default function Home() {
               <button
                 onClick={async () => {
                   if (!authForm.email) {
-                    showToast('Erreur', 'Veuillez entrer votre email', 'error')
+                    showToast('Erreur', 'Veuillez entrer votre email d\'abord', 'error')
                     return
                   }
+                  if (forgotPasswordLoading) return
+                  
+                  setForgotPasswordLoading(true)
                   try {
                     const res = await fetch('/api/auth/forgot-password', {
                       method: 'POST',
@@ -1158,19 +1162,26 @@ export default function Home() {
                       body: JSON.stringify({ email: authForm.email })
                     })
                     const data = await res.json()
-                    if (data.newPassword) {
+                    
+                    if (data.error) {
+                      showToast('Erreur', data.error, 'error')
+                    } else if (data.newPassword) {
                       // Si l'email n'a pas pu être envoyé, afficher le mot de passe
-                      showToast('Mot de passe', `Votre nouveau mot de passe: ${data.newPassword}`)
+                      showToast('Mot de passe généré', `Nouveau mot de passe: ${data.newPassword}`, 'success')
                     } else {
-                      showToast('Succès', data.message || 'Un nouveau mot de passe a été envoyé à votre email')
+                      showToast('Succès', data.message || 'Un nouveau mot de passe a été envoyé à votre email', 'success')
                     }
-                  } catch {
-                    showToast('Erreur', 'Erreur lors de la réinitialisation', 'error')
+                  } catch (err) {
+                    console.error('Forgot password error:', err)
+                    showToast('Erreur', 'Erreur de connexion. Veuillez réessayer.', 'error')
+                  } finally {
+                    setForgotPasswordLoading(false)
                   }
                 }}
-                className="text-[#9C7C5C] hover:text-[#8B6B4B] text-sm underline"
+                disabled={forgotPasswordLoading}
+                className="text-[#9C7C5C] hover:text-[#8B6B4B] text-sm underline disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Mot de passe oublié ?
+                {forgotPasswordLoading ? 'Envoi en cours...' : 'Mot de passe oublié ?'}
               </button>
             </div>
           )}

@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 
-// Email addresses - update these with your verified domain
-const FROM_EMAIL = 'onboarding@resend.dev' // For testing - change to your domain email after verification
+// Email addresses - using verified domain
+const FROM_EMAIL = 'contact@maison-khan.com'
 const REPLY_TO = 'technique@maison-khan.com' // Admin email for replies
 const BRAND_NAME = 'MAISON KHAN'
 
