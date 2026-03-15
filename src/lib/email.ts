@@ -69,9 +69,8 @@ export function getPasswordResetEmail(newPassword: string) {
       <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px;">
         <div style="text-align: center; margin-bottom: 30px;">
           <h1 style="font-family: 'Cormorant Garamond', serif; color: #0A0A0A; font-size: 28px; margin: 0;">MAISON KHAN</h1>
-          <p style="color: #9C7C5C; font-size: 14px; letter-spacing: 2px; text-transform: uppercase;">Chaussures de luxe artisanales</p>
         </div>
-        
+
         <h2 style="color: #0A0A0A; font-size: 22px; margin-bottom: 20px;">Réinitialisation de votre mot de passe</h2>
         
         <p style="color: #6B6560; font-size: 16px; line-height: 1.6;">

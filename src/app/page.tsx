@@ -1664,12 +1664,30 @@ export default function Home() {
             </button>
           </div>
           
-          {/* Mobile Menu Toggle */}
-          <button className="lg:hidden relative w-8 h-6 flex flex-col justify-between z-[110]" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Menu">
-            <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'rotate-45 translate-y-2.5' : ''}`}></span>
-            <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}></span>
-            <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-2.5' : ''}`}></span>
-          </button>
+          {/* Mobile Cart & Menu Toggle */}
+          <div className="flex lg:hidden items-center gap-4">
+            {/* Mobile Cart Button */}
+            <button
+              onClick={() => setShowCartModal(true)}
+              className="relative"
+            >
+              <svg className="w-5 h-5 text-[#0A0A0A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-2 w-5 h-5 bg-[#9C7C5C] text-white text-xs rounded-full flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+
+            {/* Mobile Menu Toggle */}
+            <button className="relative w-8 h-6 flex flex-col justify-between z-[110]" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Menu">
+              <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'rotate-45 translate-y-2.5' : ''}`}></span>
+              <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}></span>
+              <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-2.5' : ''}`}></span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1745,12 +1763,6 @@ export default function Home() {
                   <svg className="w-5 h-5 text-[#6B6560]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" /></svg>
                 </button>
               )}
-              
-              {/* Mobile Cart Button */}
-              <button className="w-full text-left px-6 py-4 text-[#0A0A0A] font-medium text-base hover:bg-[#EDE8E1] transition-colors flex items-center justify-between" onClick={() => { setIsMenuOpen(false); setShowCartModal(true); }}>
-                <span>Panier {cartCount > 0 && `(${cartCount})`}</span>
-                <svg className="w-5 h-5 text-[#6B6560]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
-              </button>
             </div>
           </div>
           <div className="p-4 border-t border-[#E5E0DA]">
@@ -2105,7 +2117,7 @@ export default function Home() {
                       <div>
                         <h3 className="font-display text-lg text-[#0A0A0A] mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Frais de Douane</h3>
                         <p className="text-[#6B6560] text-sm leading-relaxed">
-                          Frais d'envoi au transporteur. Taxes et douanes à votre gouvernement.
+                          Frais d'envoi au transporteur. Taxes et douanes à votre pays.
                         </p>
                       </div>
                     </div>
@@ -2122,6 +2134,10 @@ export default function Home() {
                       <div>
                         <h3 className="font-display text-lg text-[#0A0A0A] mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Retours & Remboursements</h3>
                         <ul className="text-[#6B6560] text-sm space-y-1">
+                          <li className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+                            <span>Échanges possibles (frais de livraison à votre charge)</span>
+                          </li>
                           <li className="flex items-center gap-2">
                             <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
                             <span>Frais d'expédition non remboursables</span>
