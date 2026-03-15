@@ -460,6 +460,7 @@ export default function Home() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
   
   // Checkout State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
@@ -1285,7 +1286,7 @@ export default function Home() {
         if (data.error) {
           showToast('Erreur', data.error, 'error')
         } else if (data.newPassword) {
-          showToast('Mot de passe généré', `Nouveau mot de passe: ${data.newPassword}`, 'success')
+          setGeneratedPassword(data.newPassword)
         } else {
           showToast('Succès', data.message || 'Un nouveau mot de passe a été envoyé à votre email', 'success')
         }
@@ -3973,6 +3974,51 @@ export default function Home() {
       
       {/* Auth Modal */}
       {mounted && createPortal(authModalContent, document.body)}
+      
+      {/* Generated Password Modal */}
+      {mounted && generatedPassword && createPortal(
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4" onClick={() => setGeneratedPassword(null)}>
+          <div className="bg-[#F8F6F3] w-full max-w-md p-6 rounded-lg" onClick={e => e.stopPropagation()}>
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-display text-[#0A0A0A] mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                Mot de passe généré
+              </h3>
+              <p className="text-[#6B6560] text-sm mb-4">
+                Votre nouveau mot de passe temporaire est :
+              </p>
+              <div className="bg-white border-2 border-[#9C7C5C] rounded-lg p-4 mb-4">
+                <p className="text-2xl font-mono font-bold text-[#0A0A0A] tracking-wider select-all">
+                  {generatedPassword}
+                </p>
+              </div>
+              <p className="text-[#6B6560] text-xs mb-4">
+                ⚠️ Notez ce mot de passe et changez-le après connexion
+              </p>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedPassword)
+                  showToast('Copié', 'Mot de passe copié dans le presse-papier')
+                }}
+                className="w-full bg-[#9C7C5C] text-white py-3 uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors mb-2"
+              >
+                Copier le mot de passe
+              </button>
+              <button
+                onClick={() => setGeneratedPassword(null)}
+                className="w-full border border-[#E5E0DA] text-[#6B6560] py-3 uppercase tracking-wider hover:bg-[#E5E0DA] transition-colors"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       
       {/* Checkout Modal */}
       <CheckoutModal />

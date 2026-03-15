@@ -2,7 +2,7 @@ import { Resend } from 'resend'
 
 // Email addresses - using verified domain
 const FROM_EMAIL = 'contact@maison-khan.com'
-const REPLY_TO = 'technique@maison-khan.com' // Admin email for replies
+const REPLY_TO = 'contact@maison-khan.com' // Admin email for replies
 const BRAND_NAME = 'MAISON KHAN'
 
 interface SendEmailOptions {
@@ -104,7 +104,7 @@ export function getPasswordResetEmail(newPassword: string) {
             📍 Lomé, Togo | 📞 +228 70 16 67 67
           </p>
           <p style="color: #6B6560; font-size: 12px;">
-            ✉️ technique@maison-khan.com
+            ✉️ contact@maison-khan.com
           </p>
         </div>
       </div>
