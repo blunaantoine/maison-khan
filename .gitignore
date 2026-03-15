@@ -48,5 +48,9 @@ test
 prompt
 
 server.log
+
+# Database - IMPORTANT: keep local data
+db/
+
 # Skills directory
 /skills/

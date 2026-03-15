@@ -416,6 +416,14 @@ export default function Home() {
   const [siteContent, setSiteContent] = useState<SiteContent[]>([])
   const [mounted, setMounted] = useState(false)
   
+  // Chatbot state
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  const [chatInput, setChatInput] = useState('')
+  const [isChatLoading, setIsChatLoading] = useState(false)
+  const [chatSessionId] = useState(() => `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null)
+  
   // Set mounted on client side
   useEffect(() => {
     setMounted(true)
@@ -540,6 +548,51 @@ export default function Home() {
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id))
     }, 3000)
+  }
+
+  // Chatbot functions
+  const scrollToBottom = () => {
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [chatMessages])
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return
+
+    const userMessage = chatInput.trim()
+    setChatInput('')
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    setIsChatLoading(true)
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: chatSessionId, message: userMessage })
+      })
+
+      const data = await res.json()
+
+      if (data.success && data.response) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: data.response }])
+      } else {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: 'Désolé, je n\'ai pas pu répondre. Contactez-nous via WhatsApp au +228 70 16 67 67.' }])
+      }
+    } catch {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Une erreur est survenue. Contactez-nous via WhatsApp au +228 70 16 67 67.' }])
+    } finally {
+      setIsChatLoading(false)
+    }
+  }
+
+  const handleChatKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendChatMessage()
+    }
   }
 
   // Get content by key
@@ -3934,6 +3987,143 @@ export default function Home() {
             </div>
           ))}
         </div>,
+        document.body
+      )}
+
+      {/* Chatbot Widget */}
+      {mounted && createPortal(
+        <>
+          {/* Chat Toggle Button */}
+          <button
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg z-[1000] flex items-center justify-center transition-all duration-300 ${isChatOpen ? 'bg-[#6B6560] rotate-0' : 'bg-[#9C7C5C] hover:bg-[#8B6B4B]'}`}
+            aria-label={isChatOpen ? 'Fermer le chat' : 'Ouvrir le chat'}
+          >
+            {isChatOpen ? (
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Chat Window */}
+          <div className={`fixed bottom-24 right-6 w-[350px] max-w-[calc(100vw-48px)] bg-white rounded-lg shadow-2xl z-[999] flex flex-col transition-all duration-300 ${isChatOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`} style={{ height: '450px', maxHeight: 'calc(100vh-150px)' }}>
+            {/* Chat Header */}
+            <div className="bg-[#9C7C5C] text-white p-4 rounded-t-lg flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-display text-lg" style={{ fontFamily: "'Cormorant Garamond', serif" }}>MAISON KHAN</h3>
+                <p className="text-xs text-white/80">Assistant virtuel</p>
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F8F6F3]">
+              {chatMessages.length === 0 ? (
+                <div className="text-center py-6">
+                  <div className="w-16 h-16 bg-[#9C7C5C]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-[#9C7C5C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <p className="text-[#0A0A0A] font-medium text-base mb-1">Bienvenue chez MAISON KHAN !</p>
+                  <p className="text-[#6B6560] text-sm mb-4">Je suis votre assistant personnel. Comment puis-je vous aider ?</p>
+                  <div className="space-y-2 text-left">
+                    <button onClick={() => setChatInput('Je cherche des chaussures pour homme')} className="w-full px-3 py-2.5 bg-white border border-[#E5E0DA] rounded-lg text-sm text-[#6B6560] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/5 transition-colors flex items-center gap-2">
+                      👨 Chaussures homme
+                    </button>
+                    <button onClick={() => setChatInput('Je cherche des chaussures pour femme')} className="w-full px-3 py-2.5 bg-white border border-[#E5E0DA] rounded-lg text-sm text-[#6B6560] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/5 transition-colors flex items-center gap-2">
+                      👩 Chaussures femme
+                    </button>
+                    <button onClick={() => setChatInput('Quels sont vos prix ?')} className="w-full px-3 py-2.5 bg-white border border-[#E5E0DA] rounded-lg text-sm text-[#6B6560] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/5 transition-colors flex items-center gap-2">
+                      💰 Voir les prix
+                    </button>
+                    <button onClick={() => setChatInput('Quels sont vos délais de livraison ?')} className="w-full px-3 py-2.5 bg-white border border-[#E5E0DA] rounded-lg text-sm text-[#6B6560] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/5 transition-colors flex items-center gap-2">
+                      📦 Livraison
+                    </button>
+                    <button onClick={() => setChatInput('Parlez-moi de MAISON KHAN')} className="w-full px-3 py-2.5 bg-white border border-[#E5E0DA] rounded-lg text-sm text-[#6B6560] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/5 transition-colors flex items-center gap-2">
+                      🏠 Notre histoire
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {chatMessages.map((msg, idx) => (
+                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] p-3 rounded-lg text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#9C7C5C] text-white rounded-br-none' : 'bg-white border border-[#E5E0DA] text-[#0A0A0A] rounded-bl-none'}`}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                  {isChatLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-white border border-[#E5E0DA] p-3 rounded-lg rounded-bl-none">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-[#9C7C5C] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-2 h-2 bg-[#9C7C5C] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-2 h-2 bg-[#9C7C5C] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatMessagesEndRef} />
+                </>
+              )}
+            </div>
+
+            {/* Chat Input */}
+            <div className="p-3 border-t border-[#E5E0DA] bg-white rounded-b-lg">
+              {/* Quick replies when in conversation */}
+              {chatMessages.length > 0 && !isChatLoading && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <button onClick={() => { setChatInput('Comment passer commande ?'); setTimeout(() => sendChatMessage(), 100) }} className="px-3 py-1.5 bg-[#F8F6F3] border border-[#E5E0DA] rounded-full text-xs text-[#6B6560] hover:bg-[#9C7C5C] hover:text-white hover:border-[#9C7C5C] transition-colors">
+                    🛒 Commander
+                  </button>
+                  <button onClick={() => { setChatInput('Quelles tailles sont disponibles ?'); setTimeout(() => sendChatMessage(), 100) }} className="px-3 py-1.5 bg-[#F8F6F3] border border-[#E5E0DA] rounded-full text-xs text-[#6B6560] hover:bg-[#9C7C5C] hover:text-white hover:border-[#9C7C5C] transition-colors">
+                    📏 Tailles
+                  </button>
+                  <button onClick={() => { setChatInput('Puis-je échanger ?'); setTimeout(() => sendChatMessage(), 100) }} className="px-3 py-1.5 bg-[#F8F6F3] border border-[#E5E0DA] rounded-full text-xs text-[#6B6560] hover:bg-[#9C7C5C] hover:text-white hover:border-[#9C7C5C] transition-colors">
+                    🔄 Échange
+                  </button>
+                  <button onClick={() => { setChatInput('Parler avec un conseiller'); setTimeout(() => sendChatMessage(), 100) }} className="px-3 py-1.5 bg-[#F8F6F3] border border-[#E5E0DA] rounded-full text-xs text-[#6B6560] hover:bg-[#9C7C5C] hover:text-white hover:border-[#9C7C5C] transition-colors">
+                    💬 Conseiller
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyPress={handleChatKeyPress}
+                  placeholder="Tapez votre message..."
+                  className="flex-1 px-3 py-2 border border-[#E5E0DA] rounded-lg text-sm focus:outline-none focus:border-[#9C7C5C]"
+                  disabled={isChatLoading}
+                />
+                <button
+                  onClick={sendChatMessage}
+                  disabled={!chatInput.trim() || isChatLoading}
+                  className="px-4 py-2 bg-[#9C7C5C] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#8B6B4B] transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-xs text-[#6B6560] mt-2 text-center">
+                Ou contactez-nous via <a href="https://wa.me/22870166767" target="_blank" rel="noopener" className="text-[#9C7C5C] hover:underline font-medium">WhatsApp</a>
+              </p>
+            </div>
+          </div>
+        </>,
         document.body
       )}
     </div>
