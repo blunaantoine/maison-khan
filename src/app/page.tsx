@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { createPortal } from 'react-dom'
+import { useRouter } from 'next/navigation'
+
 
 // Auth Form Component - Separate to prevent re-renders
 interface AuthFormProps {
@@ -376,6 +378,178 @@ const compressImage = (file: File, maxWidth: number = 1200, quality: number = 0.
 }
 
 export default function Home() {
+
+
+  //debut x1
+
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
+  const [identifier, setIdentifier] = useState<string | null>(null);
+
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'success' | 'failed' | null>(null)
+
+  const [mmOpen, setMmOpen] = useState(false)
+
+  const phoneInputRef = useRef<HTMLInputElement>(null)
+
+  const router = useRouter()
+  const handlePayment = async (orderId, items, total) => {
+    setIsPaymentLoading(true)
+    setPaymentStatus('pending')
+
+    const phoneNumber = customerPhone.replace(/\s/g, '')
+
+    const TMONEY_PREFIXES = ['70','71','72','90','91','92','93']
+    const FLOOZ_PREFIXES  = ['79','99','98','97','96']
+    const prefix = phoneNumber.slice(0, 2)
+    const network = TMONEY_PREFIXES.includes(prefix) ? 'TMONEY'
+                : FLOOZ_PREFIXES.includes(prefix)  ? 'FLOOZ'
+                : 'TMONEY'
+
+    const identifier = `CMD_${orderId}_${Date.now()}`
+    
+
+    try {
+      const initResp = await fetch('/api/paygate-init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          phoneNumber,
+          network,
+          identifier,                          
+          customerName: `${checkoutForm.firstName} ${checkoutForm.lastName}`.trim()
+        })
+      })
+
+      const initData = await initResp.json()
+
+      if (!initData.success) {
+        setPaymentStatus('failed')
+
+        if (initData.transactionId) {          
+          await fetch('/api/payments/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              transactionId: initData.transactionId,
+              status: 'failed',
+              errorMessage: 'Initialisation échouée'
+            })
+          })
+        }
+
+        setIsPaymentLoading(false)
+        return
+      }
+
+      // Polling
+      const checkPayment = async () => {
+        try {
+          const statusResp = await fetch('/api/paygate-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier })
+          })
+          const statusData = await statusResp.json()
+          const status = statusData.status?.toString()
+
+          if (status === '0') {
+            setPaymentStatus('success')
+
+            await fetch('/api/orders', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'x-is-admin': 'true' },
+              body: JSON.stringify({ id: orderId, paymentStatus: 'paid', status: 'paid' })
+            })
+
+            await fetch('/api/payments/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ transactionId: identifier, status: 'success', operator: network })
+            })
+
+            setCart([])
+            setDirectOrder(null)
+            setShowCheckoutModal(false)
+            if (user) fetchUserOrders()
+            
+            router.push(`/payment-success?orderId=${orderId}`)
+
+          } else if (status === '2') {
+            setTimeout(checkPayment, 5000)
+          } else {
+            setPaymentStatus('failed')
+            await fetch('/api/payments/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                transactionId: identifier,
+                status: 'failed',
+                errorMessage: `Statut PayGate: ${status}`
+              })
+            })
+
+            await fetch('/api/orders', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-is-admin': 'true'
+              },
+              body: JSON.stringify({
+                id: orderId,
+                paymentStatus: 'failed',
+                status: 'payment_failed'
+              })
+            })
+
+            setIsPaymentLoading(false)
+
+            router.push(`/payment-failed?orderId=${orderId}`)
+
+          }
+        } catch (err) {
+          console.error('Erreur polling:', err)
+          setTimeout(checkPayment, 5000)
+        }
+      }
+
+      setTimeout(checkPayment, 3000)
+
+    } catch (err) {
+      console.error(err)
+      setPaymentStatus('failed')
+
+      await fetch('/api/payments/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: identifier,
+          status: 'failed',
+          errorMessage: 'Erreur générale'
+        })
+      })
+
+
+      await fetch('/api/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-is-admin': 'true' },
+        body: JSON.stringify({
+          id: orderId,
+          paymentStatus: 'failed',
+          status: 'payment_failed'
+        })
+      })
+
+      setIsPaymentLoading(false)
+    }
+  }
+
+
+  // fin x1
+
+
+
   // State
   const [currentSection, setCurrentSection] = useState('home')
   const [products, setProducts] = useState<Product[]>([])
@@ -460,7 +634,6 @@ export default function Home() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
-  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
   
   // Checkout State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
@@ -1286,7 +1459,7 @@ export default function Home() {
         if (data.error) {
           showToast('Erreur', data.error, 'error')
         } else if (data.newPassword) {
-          setGeneratedPassword(data.newPassword)
+          showToast('Mot de passe généré', `Nouveau mot de passe: ${data.newPassword}`, 'success')
         } else {
           showToast('Succès', data.message || 'Un nouveau mot de passe a été envoyé à votre email', 'success')
         }
@@ -1330,6 +1503,21 @@ export default function Home() {
   const CheckoutModal = () => {
     if (!showCheckoutModal) return null
     
+      // début PG2
+
+      const TMONEY_PREFIXES = ['70','71','72','90','91','92','93']
+      const FLOOZ_PREFIXES  = ['79','99','98','97','96']
+      const digits = customerPhone.replace(/\D/g, '')
+      const detectedNetwork = (() => {
+        const prefix = digits.slice(0, 2)
+        if (TMONEY_PREFIXES.includes(prefix)) return 'TMONEY'
+        if (FLOOZ_PREFIXES.includes(prefix))  return 'FLOOZ'
+        return null
+      })()
+      const isValid = digits.length === 8 && detectedNetwork !== null
+
+      // fin PG2
+
     // Use directOrder if available, otherwise use cart
     const orderItems = directOrder ? [{
       id: directOrder.product.id,
@@ -1495,6 +1683,8 @@ export default function Home() {
                 </div>
 
                 {/* Payment Options */}
+
+
                 <div className="space-y-3">
                   <p className="font-medium">Mode de paiement</p>
                   
@@ -1557,15 +1747,208 @@ export default function Home() {
                   </button>
                   
                   <p className="text-center text-xs text-[#6B6560]">ou</p>
-                  
-                  {/* CinetPay Option */}
-                  <button
-                    onClick={handleCheckout}
-                    className="w-full bg-[#9C7C5C] text-white py-3 uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors"
-                  >
-                    Payer via CinetPay {formatPrice(total)}
-                  </button>
+
+                  {/* début PG3 */}
+
+
+                  {!mmOpen ? (
+                    <button
+                      onClick={() => setMmOpen(true)}
+                      className="w-full py-3.5 bg-[#0A0A0A] text-white text-sm uppercase tracking-wider hover:bg-[#6B6560] transition-all duration-200 flex items-center justify-center gap-3"
+                    >
+                      <svg className="w-4 h-4 opacity-60 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      Payer via TMoney / Flooz
+                    </button>
+                  ) : (
+
+                    <div className="border border-[#E5E0DA] bg-[#F8F6F3]">
+
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E0DA]">
+                        <span className="text-xs uppercase tracking-widest text-[#6B6560] font-medium">
+                          Paiement Mobile Money
+                        </span>
+                        <button
+                          onClick={() => { setMmOpen(false); setCustomerPhone('') }}
+                          className="text-[#9C9A92] hover:text-[#2C2C2A] transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div className="p-4 space-y-4">
+
+                        <div>
+                          <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-2">
+                            Numéro Mobile Money
+                          </label>
+
+                          <div className="flex border border-[#E5E0DA] bg-white focus-within:border-[#1A4D8C] transition-colors">
+
+                            <div className="w-14 flex-shrink-0 flex items-center justify-center border-r border-[#E5E0DA] bg-white">
+                              {detectedNetwork === 'TMONEY' && (
+                                <img
+                                  src="/logos mobile money/logo-mixx-by-yas.png"
+                                  alt="TMoney"
+                                  className="w-8 h-8 object-contain"
+                                />
+                              )}
+                              {detectedNetwork === 'FLOOZ' && (
+                                <img
+                                  src="/logos mobile money/logo-moov-money.png"
+                                  alt="Flooz"
+                                  className="w-8 h-8 object-contain"
+                                />
+                              )}
+                              {detectedNetwork === null && (
+                                <svg className="w-5 h-5 text-[#C5C2BC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                                </svg>
+                              )}
+                            </div>
+
+                            <div className="flex-1 relative">
+                              <input
+                                ref={phoneInputRef}
+                                type="tel"
+                                value={customerPhone}
+                                onChange={(e) => {
+                                  const val = e.target.value.replace(/\D/g, '').slice(0, 8)
+                                  setCustomerPhone(val)
+                                  requestAnimationFrame(() => phoneInputRef.current?.focus())
+                                }}
+                                placeholder="00 00 00 00"
+                                maxLength={8}
+                                className="w-full h-full px-3 py-3 text-[#2C2C2A] placeholder-[#C5C2BC] bg-transparent focus:outline-none text-sm tracking-wider"
+                              />
+                            </div>
+
+                            <div className="flex items-center pr-3">
+                              {detectedNetwork === 'TMONEY' && (
+                                <span className="text-[10px] uppercase tracking-widest text-[#1A4D8C] font-medium">
+                                  TMoney
+                                </span>
+                              )}
+                              {detectedNetwork === 'FLOOZ' && (
+                                <span className="text-[10px] uppercase tracking-widest text-[#E30613] font-medium">
+                                  Flooz
+                                </span>
+                              )}
+                              {digits.length > 0 && digits.length < 8 && (
+                                <span className="text-[10px] text-[#9C9A92]">
+                                  {8 - digits.length} restants
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+
+                          {digits.length >= 2 && detectedNetwork === null && (
+                            <p className="mt-1.5 text-[11px] text-red-500 flex items-center gap-1.5">
+                              <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                              </svg>
+                              Préfixe non reconnu. Vérifiez votre numéro.
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={async () => {
+                            const orderRes = await fetch('/api/orders', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+                              body: JSON.stringify({
+                                items: orderItems.map(item => ({
+                                  productId: item.id,
+                                  productName: item.name,
+                                  productImage: item.image,
+                                  colorName: item.colorName || null,
+                                  size: item.size,
+                                  quantity: item.qty,
+                                  unitPrice: item.price
+                                })),
+                                customerInfo: {
+                                  email: checkoutForm.email || user?.email,
+                                  phone: checkoutForm.phone || user?.phone,
+                                  firstName: checkoutForm.firstName || user?.firstName,
+                                  lastName: checkoutForm.lastName || user?.lastName
+                                },
+                                shippingAddress: {
+                                  city: checkoutForm.city,
+                                  address: checkoutForm.address,
+                                  country: 'Togo',
+                                  phone: checkoutForm.phone || user?.phone
+                                },
+                                subtotal,
+                                shippingCost: 0,
+                                total,
+                                paymentMethod: 'mobile_money'
+                              })
+                            })
+
+                            const orderData = await orderRes.json()
+
+                            if (!orderRes.ok) {
+                              showToast('Erreur', orderData.error || 'Erreur création commande', 'error')
+                              return
+                            }
+
+                            await handlePayment(orderData.order.id, orderItems, total)
+                          }}
+                          disabled={isPaymentLoading || !isValid}
+                          className={`w-full py-3.5 text-white text-sm uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2.5 ${
+                            isPaymentLoading
+                              ? 'bg-[#6B6560] cursor-wait'
+                              : isValid
+                              ? 'bg-[#1A4D8C] hover:bg-[#163c70]'
+                              : 'bg-[#C5C2BC] cursor-not-allowed'
+                          }`}
+                        >
+                          {isPaymentLoading ? (
+                            <>
+                              <svg className="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                              </svg>
+                              <span>Confirmez sur votre téléphone...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                              </svg>
+                              <span>
+                                Payer {formatPrice(total)}
+                                {detectedNetwork && ` via ${detectedNetwork === 'TMONEY' ? 'TMoney' : 'Flooz'}`}
+                              </span>
+                            </>
+                          )}
+                        </button>
+
+                        {paymentStatus === 'pending' && isPaymentLoading && (
+                          <div className="flex items-center gap-2.5 py-2 px-3 bg-blue-50 border border-blue-100">
+                            <svg className="w-3.5 h-3.5 animate-spin text-[#1A4D8C] flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                            </svg>
+                            <span className="text-xs text-[#1A4D8C]">En attente de confirmation sur votre téléphone...</span>
+                          </div>
+                        )}
+
+                      </div>
+                    </div>
+
+                  )}
+
+                  {/* fin PG3 */}
+
+
                 </div>
+
 
                 <div className="bg-[#EDE8E1] p-4 text-sm">
                   <p className="font-medium mb-1">ℹ️ Information</p>
@@ -3974,51 +4357,6 @@ export default function Home() {
       
       {/* Auth Modal */}
       {mounted && createPortal(authModalContent, document.body)}
-      
-      {/* Generated Password Modal */}
-      {mounted && generatedPassword && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4" onClick={() => setGeneratedPassword(null)}>
-          <div className="bg-[#F8F6F3] w-full max-w-md p-6 rounded-lg" onClick={e => e.stopPropagation()}>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-display text-[#0A0A0A] mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                Mot de passe généré
-              </h3>
-              <p className="text-[#6B6560] text-sm mb-4">
-                Votre nouveau mot de passe temporaire est :
-              </p>
-              <div className="bg-white border-2 border-[#9C7C5C] rounded-lg p-4 mb-4">
-                <p className="text-2xl font-mono font-bold text-[#0A0A0A] tracking-wider select-all">
-                  {generatedPassword}
-                </p>
-              </div>
-              <p className="text-[#6B6560] text-xs mb-4">
-                ⚠️ Notez ce mot de passe et changez-le après connexion
-              </p>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(generatedPassword)
-                  showToast('Copié', 'Mot de passe copié dans le presse-papier')
-                }}
-                className="w-full bg-[#9C7C5C] text-white py-3 uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors mb-2"
-              >
-                Copier le mot de passe
-              </button>
-              <button
-                onClick={() => setGeneratedPassword(null)}
-                className="w-full border border-[#E5E0DA] text-[#6B6560] py-3 uppercase tracking-wider hover:bg-[#E5E0DA] transition-colors"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
       
       {/* Checkout Modal */}
       <CheckoutModal />
