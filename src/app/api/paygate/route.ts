@@ -25,7 +25,7 @@ function getPayGateErrorMessage(code: number): string {
   return messages[code] || `Erreur PayGate (code: ${code})`
 }
 
-// POST - Initialize payment (Étape 1 et 2)
+// POST - Initialize payment
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -35,24 +35,15 @@ export async function POST(request: NextRequest) {
 
     // Validation des données obligatoires
     if (!orderId) {
-      return NextResponse.json(
-        { error: 'ID commande requis' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'ID commande requis' }, { status: 400 })
     }
 
     if (!phoneNumber) {
-      return NextResponse.json(
-        { error: 'Numéro de téléphone requis' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Numéro de téléphone requis' }, { status: 400 })
     }
 
     if (!network) {
-      return NextResponse.json(
-        { error: 'Réseau de paiement requis (FLOOZ ou MIXX)' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Réseau de paiement requis (FLOOZ ou MIXX)' }, { status: 400 })
     }
 
     // Nettoyer le numéro de téléphone - format local 8 chiffres
@@ -67,47 +58,34 @@ export async function POST(request: NextRequest) {
     const phoneRegex = /^[0-9]{8}$/
     if (!phoneRegex.test(cleanPhone)) {
       console.log('🔴 Invalid phone format:', cleanPhone)
-      return NextResponse.json(
-        { error: `Numéro de téléphone invalide: ${cleanPhone}. Format attendu: 8 chiffres` },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: `Numéro invalide: ${cleanPhone}. Format attendu: 8 chiffres` }, { status: 400 })
     }
 
     console.log('✅ Phone cleaned:', phoneNumber, '->', cleanPhone)
 
-    // 🟢 Étape 1: Vérifier que la commande existe
+    // Vérifier que la commande existe
     const order = await db.order.findUnique({
       where: { id: orderId },
       include: { items: true }
     })
 
     if (!order) {
-      return NextResponse.json(
-        { error: 'Commande non trouvée' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Commande non trouvée' }, { status: 404 })
     }
 
     if (order.paymentStatus === 'paid') {
-      return NextResponse.json(
-        { error: 'Cette commande est déjà payée' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Cette commande est déjà payée' }, { status: 400 })
     }
 
-    // 🟢 Étape 1: Vérifier le montant côté backend (SÉCURITÉ)
     const amount = order.total
     if (amount <= 0) {
-      return NextResponse.json(
-        { error: 'Montant invalide' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Montant invalide' }, { status: 400 })
     }
 
-    // Générer un identifiant unique pour la transaction
+    // Générer un identifiant unique
     const identifier = `PG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-    // 🟢 Enregistrer la transaction en base AVANT d'appeler PayGate
+    // Enregistrer la transaction en base
     const payment = await db.payment.create({
       data: {
         orderId: order.id,
@@ -136,46 +114,37 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 🟢 Étape 2: Appel API PayGate (depuis le backend)
-    // Définir les URLs de callback et retour
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://maison-khan.com'
-    const callbackUrl = `${baseUrl}/api/paygate/callback`
-    const returnUrl = `${baseUrl}/payment-success`
-
-    // Préparer les données pour PayGate
-    const paygateData = {
-      amount: amount.toString(),
-      phone_number: cleanPhone,
-      network: network, // FLOOZ ou MIXX
-      identifier: identifier,
-      callback_url: callbackUrl,
-      return_url: returnUrl
-    }
+    // Préparer les données pour PayGate (format form-urlencoded)
+    const formData = new URLSearchParams()
+    formData.append('auth_token', PAYGATE_AUTH_TOKEN)
+    formData.append('phone_number', cleanPhone)
+    formData.append('amount', amount.toString())
+    formData.append('identifier', identifier)
+    formData.append('network', network)
 
     console.log('🚀 Calling PayGate API:', {
       url: `${PAYGATE_BASE_URL}/pay`,
       phone: cleanPhone,
       amount: amount,
       network,
-      identifier,
-      callback_url: callbackUrl
+      identifier
     })
 
     try {
+      // Appel API PayGate avec form-urlencoded
       const response = await fetch(`${PAYGATE_BASE_URL}/pay`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${PAYGATE_AUTH_TOKEN}`
+          'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body: JSON.stringify(paygateData)
+        body: formData.toString()
       })
 
       const result = await response.json()
       console.log('📥 PayGate Response:', { status: response.status, result })
 
       if (response.ok && result.status === 0) {
-        // 🟢 Mettre à jour le paiement avec les données PayGate
+        // Succès
         await db.payment.update({
           where: { id: payment.id },
           data: {
@@ -207,41 +176,28 @@ export async function POST(request: NextRequest) {
           }
         })
 
-        return NextResponse.json(
-          { error: errorMessage, details: result },
-          { status: 400 }
-        )
+        return NextResponse.json({ error: errorMessage, details: result }, { status: 400 })
       }
     } catch (fetchError) {
       console.error('❌ PayGate fetch error:', fetchError)
-      return NextResponse.json(
-        { error: 'Erreur de connexion à PayGate', details: String(fetchError) },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Erreur de connexion à PayGate', details: String(fetchError) }, { status: 500 })
     }
   } catch (error) {
     console.error('Payment init error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de l\'initialisation du paiement' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur lors de l\'initialisation du paiement' }, { status: 500 })
   }
 }
 
-// GET - Vérifier le statut d'un paiement (pour polling)
+// GET - Vérifier le statut d'un paiement
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const identifier = searchParams.get('identifier')
 
     if (!identifier) {
-      return NextResponse.json(
-        { error: 'ID transaction requis' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'ID transaction requis' }, { status: 400 })
     }
 
-    // Trouver le paiement dans la base
     const payment = await db.payment.findFirst({
       where: {
         OR: [
@@ -253,18 +209,12 @@ export async function GET(request: NextRequest) {
     })
 
     if (!payment) {
-      return NextResponse.json(
-        { error: 'Paiement non trouvé' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Paiement non trouvé' }, { status: 404 })
     }
 
     return NextResponse.json({ payment })
   } catch (error) {
     console.error('Get payment error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la vérification du paiement' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur lors de la vérification du paiement' }, { status: 500 })
   }
 }
