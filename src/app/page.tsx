@@ -1336,16 +1336,9 @@ export default function Home() {
         })
         const paymentData = await paymentRes.json()
         
-        if (paymentData.demo) {
-          // Demo mode
-          showToast('Succès', 'Commande créée ! (Mode démo - PayGate non configuré)')
-          setCart([])
-          setDirectOrder(null)
-          setShowCheckoutModal(false)
-          if (user) fetchUserOrders()
-        } else if (paymentData.success) {
-          // Real PayGate - payment initiated
-          showToast('Paiement initié', 'Vous allez recevoir une demande de confirmation sur votre téléphone.')
+        if (paymentData.success) {
+          // Payment initiated successfully
+          showToast('Paiement initié', paymentData.instructions || 'Vous allez recevoir une demande de confirmation sur votre téléphone.')
           setCart([])
           setDirectOrder(null)
           setShowCheckoutModal(false)
