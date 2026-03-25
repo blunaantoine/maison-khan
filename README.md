@@ -77,4 +77,4 @@ NEXT_PUBLIC_BASE_URL=https://maison-khan.com
 
 ---
 
-Développé par **VISIBLE STUDIO** 🎨
+Développé par **STUDIO** 🎨
