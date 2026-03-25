@@ -19,7 +19,7 @@ interface CheckoutFormProps {
   checkoutStep: 'info' | 'shipping' | 'payment'
   setCheckoutStep: (step: 'info' | 'shipping' | 'payment') => void
   onDirectCheckout: () => void
-  onPayGateCheckout: (network: 'FLOOZ' | 'MIXX') => void
+  onPayGateCheckout: (network: 'FLOOZ' | 'TMONEY') => void
   payGateLoading: boolean
   formatPrice: (price: number) => string
   orderItems: { name: string; size: string; colorName?: string; price: number; qty: number }[]
@@ -307,9 +307,9 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
               )}
             </button>
             
-            {/* Mixx by Yas (MIXX) - Second */}
+            {/* T-Money (TMONEY) - Second */}
             <button
-              onClick={() => onPayGateCheckout('MIXX')}
+              onClick={() => onPayGateCheckout('TMONEY')}
               disabled={payGateLoading}
               className="w-full bg-[#003399] text-white py-3 uppercase tracking-wider hover:bg-[#002266] transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -323,8 +323,8 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
                 </>
               ) : (
                 <>
-                  <img src="/mixx-by-yas.png" alt="Mixx by Yas" className="h-8 w-auto bg-white rounded p-1" />
-                  <span>Mixx by Yas {formatPrice(total)}</span>
+                  <img src="/mixx-by-yas.png" alt="T-Money Togocel" className="h-8 w-auto bg-white rounded p-1" />
+                  <span>T-Money {formatPrice(total)}</span>
                 </>
               )}
             </button>
@@ -334,7 +334,7 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
             <p className="font-medium mb-2">ℹ️ Modes de paiement</p>
             <div className="space-y-1 text-[#6B6560]">
               <p><strong>Moov Money:</strong> Paiement Mobile Money Moov instantané.</p>
-              <p><strong>Mixx by Yas:</strong> Paiement Mobile Money Togocel instantané.</p>
+              <p><strong>T-Money:</strong> Paiement Mobile Money Togocel instantané.</p>
             </div>
           </div>
 
@@ -931,7 +931,7 @@ export default function Home() {
   const checkoutFormRef = useRef<CheckoutFormRef>(null)
   const [payGateLoading, setPayGateLoading] = useState(false)
   const [showPhoneModal, setShowPhoneModal] = useState(false)
-  const [pendingNetwork, setPendingNetwork] = useState<'FLOOZ' | 'MIXX' | null>(null)
+  const [pendingNetwork, setPendingNetwork] = useState<'FLOOZ' | 'TMONEY' | null>(null)
   const [paymentPhone, setPaymentPhone] = useState('')
   const [directOrder, setDirectOrder] = useState<{
     product: Product
@@ -1246,7 +1246,7 @@ export default function Home() {
   }
 
   // Checkout with PayGate
-  const handlePayGateCheckout = async (network: 'FLOOZ' | 'MIXX') => {
+  const handlePayGateCheckout = async (network: 'FLOOZ' | 'TMONEY') => {
     const formData = checkoutFormRef.current?.getFormData()
     
     // If no phone in form, show modal to ask for it
@@ -1261,7 +1261,7 @@ export default function Home() {
   }
 
   // Execute PayGate payment with phone number
-  const executePayGatePayment = async (network: 'FLOOZ' | 'MIXX', phoneNumber: string) => {
+  const executePayGatePayment = async (network: 'FLOOZ' | 'TMONEY', phoneNumber: string) => {
     const formData = checkoutFormRef.current?.getFormData()
     
     console.log('📦 Checkout Form Data:', formData)
@@ -1317,7 +1317,7 @@ export default function Home() {
           subtotal,
           shippingCost: 0,
           total: subtotal,
-          paymentMethod: network === 'FLOOZ' ? 'moov_money' : 'mixx_by_yas'
+          paymentMethod: network === 'FLOOZ' ? 'moov_money' : 't_money'
         })
       })
       
@@ -4269,7 +4269,7 @@ export default function Home() {
               </button>
             </div>
             <p className="text-sm text-[#6B6560] mb-4">
-              Entrez votre numéro de téléphone Mobile Money pour recevoir la demande de paiement {pendingNetwork === 'FLOOZ' ? 'Moov Money (Flooz)' : 'Mixx by Yas'}.
+              Entrez votre numéro de téléphone Mobile Money pour recevoir la demande de paiement {pendingNetwork === 'FLOOZ' ? 'Moov Money (Flooz)' : 'T-Money (Togocel)'}.
             </p>
             <div className="flex gap-2 mb-4">
               <span className="flex items-center px-3 py-3 bg-[#E5E0DA] text-sm">+228</span>
