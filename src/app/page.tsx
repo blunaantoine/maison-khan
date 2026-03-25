@@ -289,7 +289,7 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
             <button
               onClick={() => onPayGateCheckout('FLOOZ')}
               disabled={payGateLoading}
-              className="w-full bg-[#009EDB] text-white py-3 uppercase tracking-wider hover:bg-[#0085BA] transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#00A8E8] text-white py-3 uppercase tracking-wider hover:bg-[#0090C8] transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {payGateLoading ? (
                 <>
@@ -311,7 +311,7 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
             <button
               onClick={() => onPayGateCheckout('MIXX')}
               disabled={payGateLoading}
-              className="w-full bg-[#E31837] text-white py-3 uppercase tracking-wider hover:bg-[#C41430] transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#003399] text-white py-3 uppercase tracking-wider hover:bg-[#002266] transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {payGateLoading ? (
                 <>
