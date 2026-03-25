@@ -1,7 +1,9 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.2.0",
+  "name": "maison-khan",
+  "version": "1.0.0",
   "private": true,
+  "description": "MAISON KHAN - E-commerce de luxe Made in Africa",
+  "author": "VISIBLE STUDIO",
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
