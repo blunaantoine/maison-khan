@@ -2131,12 +2131,30 @@ export default function Home() {
             </button>
           </div>
           
-          {/* Mobile Menu Toggle */}
-          <button className="lg:hidden relative w-8 h-6 flex flex-col justify-between z-[110]" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Menu">
-            <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'rotate-45 translate-y-2.5' : ''}`}></span>
-            <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}></span>
-            <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-2.5' : ''}`}></span>
-          </button>
+          {/* Mobile: Cart + Menu Toggle */}
+          <div className="flex items-center gap-4 lg:hidden">
+            {/* Mobile Cart Button */}
+            <button
+              onClick={() => setShowCartModal(true)}
+              className="relative"
+              aria-label="Panier"
+            >
+              <svg className="w-5 h-5 text-[#0A0A0A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-2 w-5 h-5 bg-[#9C7C5C] text-white text-xs rounded-full flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+            {/* Mobile Menu Toggle */}
+            <button className="relative w-8 h-6 flex flex-col justify-between z-[110]" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Menu">
+              <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'rotate-45 translate-y-2.5' : ''}`}></span>
+              <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}></span>
+              <span className={`w-full h-px bg-[#0A0A0A] transition-all duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-2.5' : ''}`}></span>
+            </button>
+          </div>
         </div>
       </header>
 
