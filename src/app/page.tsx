@@ -2898,7 +2898,7 @@ export default function Home() {
                                         </div>
                                         {idx < arr.length - 1 && (
                                           <div className="flex-1 mt-[-16px]">
-                                            <div className={`h-[2px] w-full ${isActive && stepIdx < currentIdx ? 'bg-[#9C7C5C]' : 'bg-[#E5E0DA]'}`}></div>
+                                            <div className={'h-[2px] w-full ' + (isActive && stepIdx < currentIdx ? 'bg-[#9C7C5C]' : 'bg-[#E5E0DA]')}></div>
                                           </div>
                                         )}
                                       </div>
