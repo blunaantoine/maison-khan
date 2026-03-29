@@ -2873,13 +2873,13 @@ export default function Home() {
                             {/* Suivi de progression pour les commandes payées */}
                             {(order.status === 'paid' || order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered') && (
                               <div className="mt-4 p-4 bg-[#F8F6F3] border border-[#E5E0DA]">
-                                <p className="text-xs text-[#6B6560] uppercase tracking-wider mb-3">Suivi de votre commande</p>
-                                <div className="flex items-center justify-between">
+                                <p className="text-xs text-[#6B6560] uppercase tracking-wider mb-4">Suivi de votre commande</p>
+                                <div className="flex items-start justify-between">
                                   {[
-                                    { label: 'Confirmée', status: 'paid' },
-                                    { label: 'Préparation', status: 'processing' },
-                                    { label: 'Expédiée', status: 'shipped' },
-                                    { label: 'Livrée', status: 'delivered' }
+                                    { label: 'Confirmée', status: 'paid', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+                                    { label: 'Préparation', status: 'processing', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.16-5.16a2.121 2.121 0 113-3l3.66 3.66 7.66-7.66a2.121 2.121 0 113 3l-8.49 8.49a2.12 2.12 0 01-1.67.66 2.12 2.12 0 01-1.67-.66z" /></svg> },
+                                    { label: 'Expédiée', status: 'shipped', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg> },
+                                    { label: 'Livrée', status: 'delivered', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" /></svg> }
                                   ].map((step, idx, arr) => {
                                     const statusOrder = ['paid', 'processing', 'shipped', 'delivered']
                                     const currentIdx = statusOrder.indexOf(order.status)
@@ -2889,19 +2889,17 @@ export default function Home() {
                                     return (
                                       <div key={step.status} className="flex items-center flex-1">
                                         <div className="flex flex-col items-center flex-1">
-                                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium mb-1 border-2 ${isCurrent ? 'bg-[#9C7C5C] border-[#9C7C5C] text-white' : isActive ? 'bg-[#9C7C5C] border-[#9C7C5C] text-white' : 'bg-transparent border-[#E5E0DA] text-[#B8B4AE]'}">
-                                            {isActive ? (
-                                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                            ) : (
-                                              <span>{idx + 1}</span>
-                                            )}
+                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all ${isCurrent ? 'bg-[#9C7C5C] text-white ring-4 ring-[#9C7C5C]/20' : isActive ? 'bg-[#9C7C5C]/10 text-[#9C7C5C]' : 'bg-[#E5E0DA]/50 text-[#C5C2BC]'}">
+                                            {step.icon}
                                           </div>
-                                          <span className={`text-[10px] text-center leading-tight ${isCurrent ? 'font-medium text-[#0A0A0A]' : isActive ? 'text-[#6B6560]' : 'text-[#B8B4AE]'}`}>
+                                          <span className={`text-xs text-center leading-tight ${isCurrent ? 'font-semibold text-[#0A0A0A]' : isActive ? 'text-[#6B6560]' : 'text-[#B8B4AE]'}`}>
                                             {step.label}
                                           </span>
                                         </div>
                                         {idx < arr.length - 1 && (
-                                          <div className={`h-0.5 flex-1 mx-2 rounded-full ${isActive && stepIdx < currentIdx ? 'bg-[#9C7C5C]' : 'bg-[#E5E0DA]'}`}></div>
+                                          <div className="flex-1 mt-[-16px]">
+                                            <div className={`h-[2px] w-full ${isActive && stepIdx < currentIdx ? 'bg-[#9C7C5C]' : 'bg-[#E5E0DA]'}`}></div>
+                                          </div>
                                         )}
                                       </div>
                                     )
