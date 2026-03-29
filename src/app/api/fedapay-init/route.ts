@@ -20,20 +20,8 @@ export async function POST(request: Request) {
     }
 
     if (order.paymentStatus === 'paid') {
-      return NextResponse.json({ error: 'Commande déjà payée' }, { status: 400 })
+      return NextResponse.json({ error: 'Commande déjà payée', isSuccess: true }, { status: 200 })
     }
-
-    const payment = await db.payment.create({
-      data: {
-        orderId: order.id,
-        transactionId: String(transactionId),
-        amount: order.total,
-        currency: 'XOF',
-        status: 'pending',
-        paymentMethod: 'fedapay',
-        operator: 'fedapay',
-      }
-    })
 
     const { FedaPay, Transaction } = require('fedapay')
     FedaPay.setApiKey(process.env.FEDAPAY_SECRET_KEY)
@@ -50,18 +38,50 @@ export async function POST(request: Request) {
 
     const isSuccess = verifiedStatus === 'approved'
 
-    await db.$transaction([
-      db.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: isSuccess ? 'success' : 'failed',
-          errorMessage: isSuccess ? null : `Statut FedaPay: ${verifiedStatus}`,
-          paidAt: isSuccess ? new Date() : null,
-          metadata: JSON.stringify({ fedapayStatus: verifiedStatus, transactionId })
-        }
-      }),
+    // Chercher un Payment existant avec ce transactionId
+    const existingPayment = await db.payment.findFirst({
+      where: { transactionId: String(transactionId), orderId }
+    })
 
-      db.order.update({
+    if (existingPayment) {
+      // Mettre à jour le Payment existant
+      await db.$transaction([
+        db.payment.update({
+          where: { id: existingPayment.id },
+          data: {
+            status: isSuccess ? 'success' : 'failed',
+            errorMessage: isSuccess ? null : `Statut FedaPay: ${verifiedStatus}`,
+            paidAt: isSuccess ? new Date() : null,
+            metadata: JSON.stringify({ fedapayStatus: verifiedStatus, transactionId, source: 'fedapay-init' })
+          }
+        }),
+        db.order.update({
+          where: { id: orderId },
+          data: {
+            paymentStatus: isSuccess ? 'paid' : 'failed',
+            status: isSuccess ? 'paid' : 'payment_failed',
+            paymentMethod: 'fedapay',
+          }
+        })
+      ])
+    } else {
+      // Créer un nouveau Payment si aucun n'existe (cas de secours)
+      const payment = await db.payment.create({
+        data: {
+          orderId: order.id,
+          transactionId: String(transactionId),
+          amount: order.total,
+          currency: 'XOF',
+          status: isSuccess ? 'success' : 'failed',
+          paymentMethod: 'fedapay',
+          operator: 'fedapay',
+          paidAt: isSuccess ? new Date() : null,
+          errorMessage: isSuccess ? null : `Statut FedaPay: ${verifiedStatus}`,
+          metadata: JSON.stringify({ fedapayStatus: verifiedStatus, transactionId, source: 'fedapay-init-fallback' })
+        }
+      })
+
+      await db.order.update({
         where: { id: orderId },
         data: {
           paymentStatus: isSuccess ? 'paid' : 'failed',
@@ -69,7 +89,7 @@ export async function POST(request: Request) {
           paymentMethod: 'fedapay',
         }
       })
-    ])
+    }
 
     return NextResponse.json({
       success: true,

@@ -23,17 +23,37 @@ export async function POST(req: Request) {
 
     const isSuccess = verifiedStatus === 'approved'
 
-    await db.payment.updateMany({
-      where: { 
-        transactionId: String(transactionId),
-        orderId: orderId
-      },
-      data: {
-        status:       isSuccess ? 'success' : 'failed',
-        errorMessage: isSuccess ? null : `Statut FedaPay: ${verifiedStatus}`,
-        metadata:     JSON.stringify({ fedapayStatus: verifiedStatus })
-      }
+    // Mettre à jour le Payment existant
+    const existingPayment = await db.payment.findFirst({
+      where: { transactionId: String(transactionId), orderId }
     })
+
+    if (existingPayment) {
+      await db.payment.update({
+        where: { id: existingPayment.id },
+        data: {
+          status:       isSuccess ? 'success' : 'failed',
+          errorMessage: isSuccess ? null : `Statut FedaPay: ${verifiedStatus}`,
+          paidAt:       isSuccess ? new Date() : null,
+          metadata:     JSON.stringify({ fedapayStatus: verifiedStatus, source: 'fedapay-complete' })
+        }
+      })
+    } else {
+      // Créer si aucun n'existe (cas de secours)
+      await db.payment.create({
+        data: {
+          orderId,
+          transactionId: String(transactionId),
+          amount: 0,
+          currency: 'XOF',
+          status: isSuccess ? 'success' : 'failed',
+          paymentMethod: 'fedapay',
+          operator: 'fedapay',
+          paidAt: isSuccess ? new Date() : null,
+          metadata: JSON.stringify({ fedapayStatus: verifiedStatus, source: 'fedapay-complete-fallback' })
+        }
+      })
+    }
 
     await db.order.update({
       where: { id: orderId },

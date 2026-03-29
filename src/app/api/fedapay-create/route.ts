@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { db } from '@/lib/db'
 
 export async function POST(request: Request) {
   
@@ -27,6 +28,32 @@ export async function POST(request: Request) {
         lastname:  lastname  || 'KHAN'
       }
     })
+
+    // Créer immédiatement un Payment record en "pending"
+    // Ainsi le cron peut vérifier le statut même si le client ferme la fenêtre
+    try {
+      const existingPayment = await db.payment.findFirst({
+        where: { orderId, transactionId: String(transaction.id) }
+      })
+
+      if (!existingPayment) {
+        await db.payment.create({
+          data: {
+            orderId,
+            transactionId: String(transaction.id),
+            amount,
+            currency: 'XOF',
+            status: 'pending',
+            paymentMethod: 'fedapay',
+            operator: 'fedapay',
+            metadata: JSON.stringify({ source: 'fedapay-create', transactionId: transaction.id })
+          }
+        })
+      }
+    } catch (dbErr) {
+      // Ne pas bloquer le paiement si la création du Payment échoue
+      console.error('Erreur création Payment record:', dbErr)
+    }
 
     return NextResponse.json({ 
       transactionId: transaction.id,
