@@ -1251,6 +1251,27 @@ export default function Home() {
     }
   }
 
+  const deleteOrder = async (orderId: string, orderNumber: string) => {
+    if (!confirm(`Supprimer la commande ${orderNumber} ? Cette action est irréversible.`)) return
+    try {
+      const res = await fetch(`/api/admin/orders?id=${orderId}`, {
+        method: 'DELETE',
+        headers: { 
+          'x-user-id': user?.id || '',
+          'x-is-admin': 'true'
+        }
+      })
+      if (res.ok) {
+        fetchAdminOrders()
+        showToast('Succès', 'Commande supprimée')
+      } else {
+        showToast('Erreur', 'Erreur lors de la suppression', 'error')
+      }
+    } catch (error) {
+      showToast('Erreur', 'Erreur lors de la suppression', 'error')
+    }
+  }
+
   // Fetch admin users (admin only)
   const fetchAdminUsers = async () => {
     try {
@@ -2849,6 +2870,47 @@ export default function Home() {
                               </div>
                             )}
 
+                            {/* Suivi de progression pour les commandes payées */}
+                            {(order.status === 'paid' || order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered') && (
+                              <div className="mt-4 p-4 bg-[#F8F6F3] border border-[#E5E0DA]">
+                                <p className="text-xs text-[#6B6560] uppercase tracking-wider mb-3">Suivi de votre commande</p>
+                                <div className="flex items-center justify-between">
+                                  {[
+                                    { label: 'Commande confirmée', status: 'paid', icon: '✅' },
+                                    { label: 'En préparation', status: 'processing', icon: '🔧' },
+                                    { label: 'Expédiée', status: 'shipped', icon: '🚚' },
+                                    { label: 'Livrée', status: 'delivered', icon: '📦' }
+                                  ].map((step, idx, arr) => {
+                                    const statusOrder = ['paid', 'processing', 'shipped', 'delivered']
+                                    const currentIdx = statusOrder.indexOf(order.status)
+                                    const stepIdx = statusOrder.indexOf(step.status)
+                                    const isActive = stepIdx <= currentIdx
+                                    const isCurrent = stepIdx === currentIdx
+                                    return (
+                                      <div key={step.status} className="flex items-center flex-1">
+                                        <div className="flex flex-col items-center flex-1">
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm mb-1 ${isActive ? 'bg-[#9C7C5C] text-white' : 'bg-[#E5E0DA] text-[#6B6560]'}`}>
+                                            {step.icon}
+                                          </div>
+                                          <span className={`text-[10px] text-center leading-tight ${isCurrent ? 'font-medium text-[#0A0A0A]' : isActive ? 'text-[#6B6560]' : 'text-[#B8B4AE]'}`}>
+                                            {step.label}
+                                          </span>
+                                        </div>
+                                        {idx < arr.length - 1 && (
+                                          <div className={`h-0.5 w-full mx-1 ${isActive && stepIdx < currentIdx ? 'bg-[#9C7C5C]' : 'bg-[#E5E0DA]'}`}></div>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                                {order.status === 'shipped' && order.trackingNumber && (
+                                  <div className="mt-3 p-2 bg-white border border-[#E5E0DA] text-sm text-center">
+                                    <p className="text-[#6B6560]">Numéro de suivi : <strong>{order.trackingNumber}</strong></p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             {/* Boutons d'action pour les commandes en attente ou échouées */}
                             {(order.status === 'pending' || order.status === 'payment_failed') && (
                               <div className="mt-4 flex flex-col sm:flex-row gap-3">
@@ -3269,6 +3331,13 @@ export default function Home() {
                                     }}
                                   />
                                 )}
+
+                                <button
+                                  onClick={() => deleteOrder(order.id, order.orderNumber)}
+                                  className="bg-red-500 text-white text-center py-2 text-xs uppercase tracking-wider hover:bg-red-600 transition-colors"
+                                >
+                                  Supprimer
+                                </button>
 
                                 <a
                                   href={getWhatsAppLink(`Bonjour, concernant votre commande ${order.orderNumber}...`)}
