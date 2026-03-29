@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Paiement FedaPay — MAISON KHAN</title>
+  <script src="https://cdn.fedapay.com/checkout.js?v=1.1.7"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #F8F6F3 0%, #EDE8E1 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 40px 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 4px;
+      padding: 40px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+    }
+
+    .brand {
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #9C7C5C;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-family: 'Georgia', serif;
+      font-size: 28px;
+      font-weight: 400;
+      color: #0A0A0A;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #6B6560;
+      margin-bottom: 32px;
+    }
+
+    .amount-box {
+      background: #F8F6F3;
+      border: 1px solid #E5E0DA;
+      padding: 20px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .amount-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #6B6560; }
+    .amount-value { font-size: 24px; font-weight: 600; color: #0A0A0A; }
+
+    button#payBtn {
+      width: 100%;
+      background: #1a7a4a;
+      color: white;
+      border: none;
+      padding: 16px;
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-bottom: 16px;
+    }
+
+    button#payBtn:hover { background: #155f39; }
+    button#payBtn:disabled { background: #C5C2BC; cursor: not-allowed; }
+
+    .status {
+      padding: 12px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .status.visible  { display: block; }
+    .status.pending  { background: #fef3c7; color: #d97706; }
+    .status.success  { background: #d1fae5; color: #059669; }
+    .status.error    { background: #fee2e2; color: #dc2626; }
+
+    .log-header {
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #6B6560;
+      margin-bottom: 10px;
+    }
+
+    .log-box {
+      background: #0A0A0A;
+      border-radius: 4px;
+      padding: 16px;
+      max-height: 360px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    .log-entry { padding: 3px 0; border-bottom: 1px solid #1a1a1a; line-height: 1.6; }
+    .log-entry:last-child { border-bottom: none; }
+
+    .log-time    { color: #6B6560; margin-right: 8px; }
+    .log-info    { color: #60a5fa; }
+    .log-success { color: #34d399; font-weight: bold; }
+    .log-error   { color: #f87171; font-weight: bold; }
+    .log-warn    { color: #fbbf24; }
+
+    .divider { height: 1px; background: #E5E0DA; margin: 24px 0; }
+
+    .back-link {
+      display: block;
+      text-align: center;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #6B6560;
+      text-decoration: none;
+      margin-top: 20px;
+    }
+    .back-link:hover { color: #0A0A0A; }
+    
+    .loader {
+      text-align: center;
+      padding: 40px;
+    }
+    
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #1a7a4a;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <div id="loadingContent" class="loader">
+    <div class="spinner"></div>
+    <p>Chargement des informations de paiement...</p>
+  </div>
+
+  <div id="paymentContent" style="display: none;">
+    <p class="brand">Maison Khan</p>
+    <h1>Paiement sécurisé</h1>
+    <p class="subtitle" id="orderInfo">Chargement de la commande...</p>
+
+    <div class="amount-box">
+      <span class="amount-label">Total à payer</span>
+      <span class="amount-value" id="amountDisplay">—</span>
+    </div>
+
+    <button id="payBtn" disabled>Chargement...</button>
+
+    <div class="status" id="statusBox"></div>
+
+    <div class="divider"></div>
+
+    <div id="logs"></div>
+
+    <a href="javascript:window.close()" class="back-link">Fermer cette fenêtre</a>
+  </div>
+
+</div>
+
+<script>
+
+  const params = new URLSearchParams(window.location.search)
+  const orderId = params.get('orderId') || ''
+  
+  let widget = null
+  let isComplete = false
+  let currentTransactionId = null
+  let pollingInterval = null
+  let pollingAttempts = 0
+  const MAX_ATTEMPTS = 12
+  
+  let orderDetails = null
+
+  const payBtn = document.getElementById('payBtn')
+  const statusBox = document.getElementById('statusBox')
+  const logsDiv = document.getElementById('logs')
+  const amountDisplay = document.getElementById('amountDisplay')
+  const orderInfo = document.getElementById('orderInfo')
+  const loadingContent = document.getElementById('loadingContent')
+  const paymentContent = document.getElementById('paymentContent')
+
+  function addLog(msg, type = 'info') {
+    const time = new Date().toLocaleTimeString('fr-FR')
+    const entry = document.createElement('div')
+    entry.className = 'log-entry'
+    entry.innerHTML = `<span class="log-time">[${time}]</span><span class="log-${type}">${msg}</span>`
+    logsDiv.appendChild(entry)
+    logsDiv.scrollTop = logsDiv.scrollHeight
+  }
+
+  function setStatus(msg, type = 'pending') {
+    statusBox.textContent = msg
+    statusBox.className = `status visible ${type}`
+  }
+
+  function fmtPrice(n) {
+    return Number(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' XOF'
+  }
+
+  async function fetchOrderDetails() {
+    if (!orderId) {
+      return false
+    }
+    
+    try {
+      const response = await fetch(`/api/fedapay/order-details?orderId=${orderId}`)
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Erreur lors du chargement')
+      }
+      
+      orderDetails = await response.json()      
+      return true
+      
+    } catch (error) {
+      return false
+    }
+  }
+
+  function displayPaymentInfo() {
+    if (!orderDetails) return
+    
+    orderInfo.textContent = `Commande #${orderDetails.orderId.substring(0, 8)}`
+    amountDisplay.textContent = fmtPrice(orderDetails.amount)
+    payBtn.textContent = `Payer ${fmtPrice(orderDetails.amount)}`
+    payBtn.disabled = false
+  }
+
+  function startPolling(transactionId) {
+    pollingAttempts = 0
+    pollingInterval = setInterval(async () => {
+      pollingAttempts++
+
+      try {
+        const res = await fetch('/api/fedapay-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transactionId })
+        })
+        const data = await res.json()
+        if (data.status === 'approved') {
+          stopPolling()
+          await checkRealStatus(transactionId)
+
+        } else if (data.status === 'declined' || data.status === 'canceled') {
+          stopPolling()
+          await checkRealStatus(transactionId)
+
+        } else if (pollingAttempts >= MAX_ATTEMPTS) {
+          stopPolling()
+          payBtn.disabled = true
+          payBtn.textContent = 'Réessayer'
+        }
+
+      } catch (err) {
+      }
+    }, 5000)
+  }
+
+  function stopPolling() {
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      pollingInterval = null
+    }
+  }
+
+  async function checkRealStatus(transactionId) {
+    if (isComplete) return
+    isComplete = true
+
+    try {
+      const res = await fetch('/api/fedapay-init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          transactionId: String(transactionId),
+          fedapayStatus: 'pending'
+        })
+      })
+      const data = await res.json()
+
+      if (data.isSuccess) {
+        setStatus('Paiement réussi ! Redirection...', 'success')
+        setTimeout(() => {
+          window.location.href = `/payment-success?orderId=${orderId}`
+        }, 1500)
+      } else {
+        setStatus('Le paiement a échoué', 'error')
+        setTimeout(() => {
+          window.location.href = `/payment-failed?orderId=${orderId}`
+        }, 1500)
+      }
+
+    } catch (err) {
+      isComplete = false 
+      payBtn.disabled = true
+      payBtn.textContent = 'Réessayer'
+    }
+  }
+
+  async function initAndOpen() {
+    if (!orderDetails || !orderDetails.amount || orderDetails.amount <= 0) {
+      return
+    }
+
+    isComplete = false
+    payBtn.disabled = true
+    payBtn.textContent = 'Initialisation...'
+
+    try {
+      
+      const res = await fetch('/api/fedapay-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          amount: orderDetails.amount, 
+          orderId, 
+          email: orderDetails.email, 
+          firstname: orderDetails.firstname, 
+          lastname: orderDetails.lastname 
+        })
+      })
+      const data = await res.json()
+
+      if (!data.transactionId) {
+        throw new Error(data.error || 'Pas de transactionId retourné')
+      }
+
+      currentTransactionId = data.transactionId
+
+    } catch (err) {
+      payBtn.disabled = true
+      payBtn.textContent = 'Réessayer'
+      return
+    }
+
+    try {
+
+      widget = FedaPay.init({
+        public_key: "pk_live_pW0XNH6F0itP5T8JPDQ_4CWy",
+        transaction: {
+          id: currentTransactionId
+        },
+        onComplete: async function(reason, transaction) {
+          
+          const res = await fetch('/api/fedapay-init', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: orderId,
+              transactionId: currentTransactionId
+            })
+          })
+          
+          const data = await res.json()
+          
+          if (data.isSuccess) {
+            setTimeout(() => {
+              window.location.href = `/payment-success?orderId=${orderId}`
+            }, 1500)
+          } else {
+            setTimeout(() => {
+              window.location.href = `/payment-failed?orderId=${orderId}`
+            }, 1500)
+          }
+        }
+      })
+
+      widget.open()
+      startPolling(currentTransactionId)
+
+    } catch (err) {
+      payBtn.disabled = true
+      payBtn.textContent = 'Réessayer'
+    }
+  }
+
+  (async function() {
+    if (!orderId) {
+      loadingContent.innerHTML = '<p style="color: red;">ID de commande manquant</p>'
+      return
+    }
+    
+    const success = await fetchOrderDetails()
+    
+    if (success && orderDetails) {
+      loadingContent.style.display = 'none'
+      paymentContent.style.display = 'block'
+      displayPaymentInfo()
+      
+      payBtn.addEventListener('click', initAndOpen)
+      
+      setTimeout(() => {
+        if (payBtn.disabled === false) {
+          initAndOpen()
+        }
+      }, 800)
+    } else {
+      loadingContent.innerHTML = '<p style="color: red;">Impossible de charger les détails de la commande</p><p style="margin-top: 16px;"><a href="javascript:window.close()">Fermer</a></p>'
+    }
+  })()
+
+</script>
+</body>
+</html>
