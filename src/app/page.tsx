@@ -2892,7 +2892,7 @@ export default function Home() {
                                           <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all ${isCurrent ? 'bg-[#9C7C5C] text-white ring-4 ring-[#9C7C5C]/20' : isActive ? 'bg-[#9C7C5C]/10 text-[#9C7C5C]' : 'bg-[#E5E0DA]/50 text-[#C5C2BC]'}">
                                             {step.icon}
                                           </div>
-                                          <span className={`text-xs text-center leading-tight ${isCurrent ? 'font-semibold text-[#0A0A0A]' : isActive ? 'text-[#6B6560]' : 'text-[#B8B4AE]'}`}>
+                                          <span className={'text-xs text-center leading-tight ' + (isCurrent ? 'font-semibold text-[#0A0A0A]' : (isActive ? 'text-[#6B6560]' : 'text-[#B8B4AE]'))}>
                                             {step.label}
                                           </span>
                                         </div>
