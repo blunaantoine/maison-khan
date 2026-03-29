@@ -2919,7 +2919,7 @@ export default function Home() {
                                 {order.status === 'payment_failed' && (
                                   <button
                                     onClick={() => {
-                                      window.open(`/fedapay-checkout.html?orderId=${order.id}`, '_blank')
+                                      window.open('/fedapay-checkout.html?orderId=' + order.id, '_blank')
                                     }}
                                     className="flex-1 bg-[#1a7a4a] text-white py-3 px-4 text-sm uppercase tracking-wider hover:bg-[#155f39] transition-colors flex items-center justify-center gap-2"
                                   >
