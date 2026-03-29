@@ -3851,8 +3851,7 @@ export default function Home() {
                       quantity: 1
                     })
                     setShowProductModal(false)
-                    // setShowCheckoutModal(true)
-                    setCheckoutStep('info')
+                    openCheckout()
                   }}><span>Commander directement</span></button>
                   <a href={getWhatsAppLink(`Bonjour MAISON KHAN, je suis intéressé(e) par le modèle "${currentProduct.name}"${selectedSize ? `\nPointure: ${selectedSize}` : ''}${selectedColorValue ? `\nCouleur: ${currentProduct.colors?.find(c => c.colorValue === selectedColorValue)?.colorName || selectedColorValue}` : ''}`)} target="_blank" rel="noopener" className="btn-whatsapp inline-flex"><span>Commandez avec vos exigences</span></a>
                 </div>
