@@ -59,10 +59,26 @@ export async function GET(request: NextRequest) {
     }
 
     // List orders
-    const where: Record<string, unknown> = {}
+    let where: Record<string, unknown> = {}
     
     if (!isAdmin && userId) {
-      where.userId = userId
+      // Trouver l'email de l'utilisateur connecté
+      const currentUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      })
+      
+      // Afficher les commandes liées AU COMPTE ou passées avec LE MÊME EMAIL (sans compte)
+      if (currentUser?.email) {
+        where = {
+          OR: [
+            { userId: userId },
+            { customerEmail: currentUser.email }
+          ]
+        }
+      } else {
+        where.userId = userId
+      }
     }
     
     if (status) {
@@ -92,6 +108,20 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
       take: 50
     })
+
+    // Relier automatiquement les commandes orphelines (sans userId) au compte du client
+    if (!isAdmin && userId) {
+      const orphanOrders = orders.filter(o => !o.userId)
+      if (orphanOrders.length > 0) {
+        await db.order.updateMany({
+          where: {
+            id: { in: orphanOrders.map(o => o.id) },
+            userId: null
+          },
+          data: { userId: userId }
+        })
+      }
+    }
 
     return NextResponse.json({ orders })
   } catch (error) {
