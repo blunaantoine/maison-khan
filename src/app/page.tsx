@@ -2823,10 +2823,10 @@ export default function Home() {
                                 </p>
                                 {order.paymentMethod && (
                                   <p className="text-xs text-[#9C7C5C] mt-1 uppercase tracking-wider">
-                                    {order.paymentMethod === 'fedapay' ? '💳 Mobile Money (FedaPay)' :
-                                     order.paymentMethod === 'moov_money' ? '📱 Moov Money' :
-                                     order.paymentMethod === 't_money' ? '📱 T-Money' :
-                                     order.paymentMethod === 'direct' ? '🏷️ Commande directe' :
+                                    {order.paymentMethod === 'fedapay' ? 'Mobile Money (FedaPay)' :
+                                     order.paymentMethod === 'moov_money' ? 'Moov Money' :
+                                     order.paymentMethod === 't_money' ? 'T-Money' :
+                                     order.paymentMethod === 'direct' ? 'Commande directe' :
                                      order.paymentMethod}
                                   </p>
                                 )}
@@ -2841,13 +2841,13 @@ export default function Home() {
                                   order.status === 'cancelled' ? 'bg-gray-100 text-gray-600' :
                                   'bg-red-100 text-red-800'
                                 }`}>
-                                  {order.status === 'pending' ? '⏳ En attente de paiement' :
-                                   order.status === 'paid' ? '✅ Payée' :
-                                   order.status === 'processing' ? '🔧 En préparation' :
-                                   order.status === 'shipped' ? '🚚 Expédiée' :
-                                   order.status === 'delivered' ? '✅ Livrée' :
-                                   order.status === 'payment_failed' ? '❌ Paiement échoué' :
-                                   order.status === 'cancelled' ? '🚫 Annulée' :
+                                  {order.status === 'pending' ? 'En attente de paiement' :
+                                   order.status === 'paid' ? 'Payée' :
+                                   order.status === 'processing' ? 'En préparation' :
+                                   order.status === 'shipped' ? 'Expédiée' :
+                                   order.status === 'delivered' ? 'Livrée' :
+                                   order.status === 'payment_failed' ? 'Paiement échoué' :
+                                   order.status === 'cancelled' ? 'Annulée' :
                                    order.status}
                                 </span>
                               </div>
@@ -2876,10 +2876,10 @@ export default function Home() {
                                 <p className="text-xs text-[#6B6560] uppercase tracking-wider mb-3">Suivi de votre commande</p>
                                 <div className="flex items-center justify-between">
                                   {[
-                                    { label: 'Commande confirmée', status: 'paid', icon: '✅' },
-                                    { label: 'En préparation', status: 'processing', icon: '🔧' },
-                                    { label: 'Expédiée', status: 'shipped', icon: '🚚' },
-                                    { label: 'Livrée', status: 'delivered', icon: '📦' }
+                                    { label: 'Confirmée', status: 'paid' },
+                                    { label: 'Préparation', status: 'processing' },
+                                    { label: 'Expédiée', status: 'shipped' },
+                                    { label: 'Livrée', status: 'delivered' }
                                   ].map((step, idx, arr) => {
                                     const statusOrder = ['paid', 'processing', 'shipped', 'delivered']
                                     const currentIdx = statusOrder.indexOf(order.status)
@@ -2889,15 +2889,19 @@ export default function Home() {
                                     return (
                                       <div key={step.status} className="flex items-center flex-1">
                                         <div className="flex flex-col items-center flex-1">
-                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm mb-1 ${isActive ? 'bg-[#9C7C5C] text-white' : 'bg-[#E5E0DA] text-[#6B6560]'}`}>
-                                            {step.icon}
+                                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium mb-1 border-2 ${isCurrent ? 'bg-[#9C7C5C] border-[#9C7C5C] text-white' : isActive ? 'bg-[#9C7C5C] border-[#9C7C5C] text-white' : 'bg-transparent border-[#E5E0DA] text-[#B8B4AE]'}">
+                                            {isActive ? (
+                                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                            ) : (
+                                              <span>{idx + 1}</span>
+                                            )}
                                           </div>
                                           <span className={`text-[10px] text-center leading-tight ${isCurrent ? 'font-medium text-[#0A0A0A]' : isActive ? 'text-[#6B6560]' : 'text-[#B8B4AE]'}`}>
                                             {step.label}
                                           </span>
                                         </div>
                                         {idx < arr.length - 1 && (
-                                          <div className={`h-0.5 w-full mx-1 ${isActive && stepIdx < currentIdx ? 'bg-[#9C7C5C]' : 'bg-[#E5E0DA]'}`}></div>
+                                          <div className={`h-0.5 flex-1 mx-2 rounded-full ${isActive && stepIdx < currentIdx ? 'bg-[#9C7C5C]' : 'bg-[#E5E0DA]'}`}></div>
                                         )}
                                       </div>
                                     )
