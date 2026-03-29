@@ -2772,6 +2772,15 @@ export default function Home() {
                   {/* Orders Tab */}
                   {dashboardTab === 'orders' && (
                     <div className="space-y-4">
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={fetchUserOrders}
+                          className="text-[#9C7C5C] hover:text-[#8B6B4B] text-sm uppercase tracking-wider flex items-center gap-1"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                          Actualiser
+                        </button>
+                      </div>
                       {userOrders.length === 0 ? (
                         <div className="text-center py-12 bg-[#EDE8E1]">
                           <p className="text-[#6B6560]">Aucune commande pour le moment</p>
@@ -2789,8 +2798,17 @@ export default function Home() {
                               <div>
                                 <p className="font-medium">{order.orderNumber}</p>
                                 <p className="text-sm text-[#6B6560]">
-                                  {new Date(order.createdAt).toLocaleDateString('fr-FR')}
+                                  {new Date(order.createdAt).toLocaleDateString('fr-FR')} à {new Date(order.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                                 </p>
+                                {order.paymentMethod && (
+                                  <p className="text-xs text-[#9C7C5C] mt-1 uppercase tracking-wider">
+                                    {order.paymentMethod === 'fedapay' ? '💳 Mobile Money (FedaPay)' :
+                                     order.paymentMethod === 'moov_money' ? '📱 Moov Money' :
+                                     order.paymentMethod === 't_money' ? '📱 T-Money' :
+                                     order.paymentMethod === 'direct' ? '🏷️ Commande directe' :
+                                     order.paymentMethod}
+                                  </p>
+                                )}
                               </div>
                               <div className="text-right">
                                 <span className={`inline-block px-3 py-1 text-xs uppercase tracking-wider ${
@@ -2798,13 +2816,18 @@ export default function Home() {
                                   order.status === 'paid' || order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                                   order.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
                                   order.status === 'delivered' ? 'bg-[#15803D]/10 text-[#15803D]' :
+                                  order.status === 'payment_failed' ? 'bg-red-100 text-red-800' :
+                                  order.status === 'cancelled' ? 'bg-gray-100 text-gray-600' :
                                   'bg-red-100 text-red-800'
                                 }`}>
-                                  {order.status === 'pending' ? 'En attente' :
-                                   order.status === 'paid' ? 'Payée' :
-                                   order.status === 'processing' ? 'En préparation' :
-                                   order.status === 'shipped' ? 'Expédiée' :
-                                   order.status === 'delivered' ? 'Livrée' : order.status}
+                                  {order.status === 'pending' ? '⏳ En attente de paiement' :
+                                   order.status === 'paid' ? '✅ Payée' :
+                                   order.status === 'processing' ? '🔧 En préparation' :
+                                   order.status === 'shipped' ? '🚚 Expédiée' :
+                                   order.status === 'delivered' ? '✅ Livrée' :
+                                   order.status === 'payment_failed' ? '❌ Paiement échoué' :
+                                   order.status === 'cancelled' ? '🚫 Annulée' :
+                                   order.status}
                                 </span>
                               </div>
                             </div>
@@ -2823,6 +2846,43 @@ export default function Home() {
                             {order.trackingNumber && (
                               <div className="mt-4 p-3 bg-[#EDE8E1] text-sm">
                                 <p><strong>Suivi:</strong> {order.trackingNumber}</p>
+                              </div>
+                            )}
+
+                            {/* Boutons d'action pour les commandes en attente ou échouées */}
+                            {(order.status === 'pending' || order.status === 'payment_failed') && (
+                              <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                                {order.status === 'payment_failed' && (
+                                  <button
+                                    onClick={() => {
+                                      window.open(`/fedapay-checkout.html?orderId=${order.id}`, '_blank')
+                                    }}
+                                    className="flex-1 bg-[#1a7a4a] text-white py-3 px-4 text-sm uppercase tracking-wider hover:bg-[#155f39] transition-colors flex items-center justify-center gap-2"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                                    Réessayer le paiement
+                                  </button>
+                                )}
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch('/api/orders', {
+                                        headers: { 'x-user-id': user?.id || '' }
+                                      })
+                                      if (res.ok) {
+                                        const data = await res.json()
+                                        setUserOrders(data.orders || [])
+                                        showToast('Succès', 'Commandes actualisées')
+                                      }
+                                    } catch {
+                                      showToast('Erreur', 'Impossible d\'actualiser', 'error')
+                                    }
+                                  }}
+                                  className="flex-1 border border-[#9C7C5C] text-[#9C7C5C] py-3 px-4 text-sm uppercase tracking-wider hover:bg-[#9C7C5C]/10 transition-colors flex items-center justify-center gap-2"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                  Vérifier le statut
+                                </button>
                               </div>
                             )}
                           </div>
