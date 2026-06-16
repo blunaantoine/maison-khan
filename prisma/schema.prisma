@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,19 +8,279 @@ datasource db {
 }
 
 model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  password      String
+  firstName     String?
+  lastName      String?
+  phone         String?
+  role          String     @default("customer")
+  isActive      Boolean    @default(true)
+  emailVerified Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  addresses     Address[]
+  cartItems     CartItem[]
+  orders        Order[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  label      String
+  firstName  String
+  lastName   String
+  phone      String
+  country    String   @default("Togo")
+  city       String
+  address    String
+  postalCode String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Product {
+  id           String         @id @default(cuid())
+  name         String
+  description  String?
+  category     String
+  subCategory  String?
+  genre        String         @default("femme")
+  image        String
+  sizes        String
+  type         String         @default("chaussure")
+  isActive     Boolean        @default(true)
+  isBestSeller Boolean        @default(false)
+  isNew        Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
+  colors       ProductColor[]
+
+  @@index([category])
+  @@index([genre])
+  @@index([isBestSeller])
+}
+
+model ProductColor {
+  id         String   @id @default(cuid())
+  productId  String
+  colorName  String
+  colorValue String
+  images     String
+  sizes      String
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([colorValue])
+}
+
+model CartItem {
   id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+  userId    String?
+  sessionId String?
+  productId String
+  colorId   String?
+  colorName String?
+  size      String
+  quantity  Int      @default(1)
+  price     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([productId])
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  orderNumber       String      @unique
+  userId            String?
+  customerEmail     String
+  customerPhone     String
+  customerFirstName String?
+  customerLastName  String?
+  shippingAddress   String?
+  shippingCity      String?
+  shippingCountry   String?     @default("Togo")
+  shippingPhone     String?
+  shippingLatitude  Float?
+  shippingLongitude Float?
+  subtotal          Int
+  shippingCost      Int         @default(0)
+  discount          Int         @default(0)
+  total             Int
+  status            String      @default("pending")
+  paymentStatus     String      @default("pending")
+  paymentMethod     String?
+  trackingNumber    String?
+  notes             String?
+  estimatedDelivery String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  user              User?       @relation(fields: [userId], references: [id])
+  items             OrderItem[]
+  payments          Payment[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id           String   @id @default(cuid())
+  orderId      String
+  productId    String?
+  productName  String
+  productImage String?
+  colorName    String?
+  size         String
+  quantity     Int
+  unitPrice    Int
+  totalPrice   Int
+  createdAt    DateTime @default(now())
+  product      Product? @relation(fields: [productId], references: [id])
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Payment {
+  id            String    @id @default(cuid())
+  orderId       String
+  transactionId String?   @unique
+  paymentToken  String?
+  paymentUrl    String?
+  amount        Int
+  currency      String    @default("XOF")
+  status        String    @default("pending")
+  paymentMethod String?
+  operator      String?
+  phoneNumber   String?
+  cpmTransId    String?
+  cpmSiteId     String?
+  signature     String?
+  errorMessage  String?
+  metadata      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  paidAt        DateTime?
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([transactionId])
+  @@index([status])
+}
+
+model MenuCategory {
+  id            String        @id @default(cuid())
+  name          String
+  slug          String        @unique
+  order         Int           @default(0)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  subCategories SubCategory[]
+}
+
+model SubCategory {
+  id             String       @id @default(cuid())
+  name           String
+  slug           String       @unique
+  genre          String       @default("all")
+  menuCategoryId String
+  order          Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  images         MenuImage[]
+  menuCategory   MenuCategory @relation(fields: [menuCategoryId], references: [id], onDelete: Cascade)
+
+  @@index([menuCategoryId])
+}
+
+model MenuImage {
+  id            String      @id @default(cuid())
+  subCategoryId String
+  image         String
+  title         String?
+  link          String?
+  order         Int         @default(0)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  subCategory   SubCategory @relation(fields: [subCategoryId], references: [id], onDelete: Cascade)
+}
+
+model HeroSlide {
+  id        String   @id @default(cuid())
+  image     String
+  type      String   @default("image")
+  title     String?
+  subtitle  String?
+  link      String?
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  interval  Int      @default(5000)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Post {
+model SiteSetting {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  key       String   @unique
+  value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model SiteContent {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String   @default("general")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Newsletter {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model CronLog {
+  id            String   @id @default(cuid())
+  taskName      String
+  status        String   @default("success")
+  checked       Int      @default(0)
+  success       Int      @default(0)
+  failed        Int      @default(0)
+  stillPending  Int      @default(0)
+  errors        Int      @default(0)
+  details       String?
+  duration      Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([taskName])
+  @@index([status])
+  @@index([createdAt])
 }
