@@ -50,3 +50,14 @@ prompt
 server.log
 # Skills directory
 /skills/
+# === Sécurité & fichiers sandbox (ne jamais pousser) ===
+.env
+.env.*
+!.env.example
+db/*.db
+db/*.db-journal
+
+# Captures d'écran et logs de dev
+preview-*.png
+worklog.md
+server.log
