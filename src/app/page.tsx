@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import { AdminDashboard } from '@/components/admin/AdminDashboard'
 
 // DÉBUT FEDAPAY TYPE DECLARATION
 declare global {
@@ -875,6 +876,47 @@ interface Payment {
   createdAt: string
 }
 
+interface AdminDashboardStats {
+  kpis: {
+    totalRevenue: number
+    revenueToday: number
+    revenueThisMonth: number
+    totalOrders: number
+    paidOrders: number
+    pendingOrders: number
+    avgOrderValue: number
+    conversionRate: number
+    totalProducts: number
+    activeProducts: number
+    totalUsers: number
+    newUsersThisMonth: number
+    activeCarts: number
+  }
+  revenueByDay: { date: string; revenue: number; orders: number }[]
+  usersByDay: { date: string; count: number }[]
+  statusCounts: Record<string, number>
+  paymentMethodCounts: Record<string, { count: number; revenue: number }>
+  topProducts: {
+    id: string
+    name: string
+    image: string
+    quantitySold: number
+    revenue: number
+  }[]
+  recentOrders: {
+    id: string
+    orderNumber: string
+    customerFirstName: string | null
+    customerLastName: string | null
+    customerEmail: string
+    total: number
+    status: string
+    paymentStatus: string
+    createdAt: string
+  }[]
+  generatedAt: string
+}
+
 // Helper function to format price
 const formatPrice = (price: number | undefined | null) => {
   if (price === undefined || price === null || isNaN(price)) {
@@ -976,7 +1018,9 @@ export default function Home() {
   const [videoMuted, setVideoMuted] = useState(true)
   const [videoPlaying, setVideoPlaying] = useState(true)
   const [adminPassword, setAdminPassword] = useState('')
-  const [adminTab, setAdminTab] = useState<'products' | 'orders' | 'users' | 'settings'>('products')
+  const [adminTab, setAdminTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'settings'>('dashboard')
+  const [dashboardStats, setDashboardStats] = useState<AdminDashboardStats | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
   const [adminOrders, setAdminOrders] = useState<Order[]>([])
   const [adminOrderFilter, setAdminOrderFilter] = useState<string>('all')
   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
@@ -1226,8 +1270,25 @@ export default function Home() {
     }
   }
 
+  // Fetch dashboard statistics (KPIs, trends, top products)
+  const fetchDashboardStats = async () => {
+    setDashboardLoading(true)
+    try {
+      const res = await fetch('/api/admin/stats', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setDashboardStats(data)
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error)
+    } finally {
+      setDashboardLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (currentSection === 'admin' && (user?.role === 'admin' || user?.role === 'manager')) {
+      fetchDashboardStats()
       fetchAdminOrders()
       if (user?.role === 'admin') {
         fetchAdminUsers()
@@ -3175,17 +3236,19 @@ export default function Home() {
               </div>
 
               {/* Admin Tabs */}
-              <div className="flex gap-4 border-b border-[#E5E0DA] mb-8">
+              <div className="flex flex-wrap gap-4 border-b border-[#E5E0DA] mb-8">
                 {[
+                  { id: 'dashboard', label: 'Tableau de bord', roles: ['admin', 'manager'] },
                   { id: 'products', label: 'Produits', roles: ['admin'] },
                   { id: 'orders', label: 'Commandes', roles: ['admin', 'manager'] },
                   { id: 'users', label: 'Utilisateurs', roles: ['admin'] }
                 ].filter(tab => tab.roles.includes(user?.role || '')).map(tab => (
                   <button
                     key={tab.id}
-                    onClick={() => { 
-                      setAdminTab(tab.id as 'products' | 'orders' | 'users')
+                    onClick={() => {
+                      setAdminTab(tab.id as 'dashboard' | 'products' | 'orders' | 'users')
                       if (tab.id === 'users') fetchAdminUsers()
+                      if (tab.id === 'dashboard') fetchDashboardStats()
                     }}
                     className={`py-3 px-4 text-sm uppercase tracking-wider transition-colors ${
                       adminTab === tab.id
@@ -3197,6 +3260,17 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+
+              {/* Dashboard Tab */}
+              {adminTab === 'dashboard' && (
+                <AdminDashboard
+                  stats={dashboardStats}
+                  loading={dashboardLoading}
+                  onRefresh={fetchDashboardStats}
+                  onGoToOrders={() => setAdminTab('orders')}
+                  onGoToProducts={() => setAdminTab('products')}
+                />
+              )}
 
               {/* Orders Tab */}
               {adminTab === 'orders' && (
