@@ -61,3 +61,16 @@ db/*.db-journal
 preview-*.png
 worklog.md
 server.log
+
+
+
+# === Bases de données (ne jamais commiter) ===
+
+db/
+
+prisma/db/
+
+*.db
+
+*.db-journal
+
