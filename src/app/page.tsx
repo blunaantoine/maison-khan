@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useMemo, useCallback, memo, forwardRef, us
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { AdminDashboard } from '@/components/admin/AdminDashboard'
+import { AdminOrdersTab } from '@/components/admin/AdminOrdersTab'
+import { AdminUsersTab } from '@/components/admin/AdminUsersTab'
 
 // DÉBUT FEDAPAY TYPE DECLARATION
 declare global {
@@ -3274,159 +3276,14 @@ export default function Home() {
 
               {/* Orders Tab */}
               {adminTab === 'orders' && (
-                <div className="space-y-6">
-                  {/* Order Filters */}
-                  <div className="flex flex-wrap gap-3 mb-6">
-                    {[
-                      { id: 'all', label: 'Toutes' },
-                      { id: 'pending', label: 'En attente' },
-                      { id: 'paid', label: 'Payées' },
-                      { id: 'processing', label: 'En préparation' },
-                      { id: 'shipped', label: 'Expédiées' },
-                      { id: 'delivered', label: 'Livrées' }
-                    ].map(filter => (
-                      <button
-                        key={filter.id}
-                        onClick={() => setAdminOrderFilter(filter.id)}
-                        className={`px-4 py-2 text-sm uppercase tracking-wider transition-colors ${
-                          adminOrderFilter === filter.id
-                            ? 'bg-[#9C7C5C] text-white'
-                            : 'bg-white text-[#0A0A0A] border border-[#E5E0DA] hover:border-[#9C7C5C]'
-                        }`}
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Orders List */}
-                  {adminOrders.filter(o => adminOrderFilter === 'all' || o.status === adminOrderFilter).length === 0 ? (
-                    <div className="bg-white p-12 text-center">
-                      <p className="text-[#6B6560]">Aucune commande à afficher</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {adminOrders
-                        .filter(o => adminOrderFilter === 'all' || o.status === adminOrderFilter)
-                        .map(order => (
-                          <div key={order.id} className="bg-white p-6 shadow-sm">
-                            <div className="flex flex-col lg:flex-row justify-between gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-4 mb-3">
-                                  <h3 className="font-medium text-lg">{order.orderNumber}</h3>
-                                  <span className={`inline-block px-3 py-1 text-xs uppercase tracking-wider ${
-                                    order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                    order.status === 'paid' ? 'bg-blue-100 text-blue-800' :
-                                    order.status === 'processing' ? 'bg-indigo-100 text-indigo-800' :
-                                    order.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
-                                    order.status === 'delivered' ? 'bg-[#15803D]/10 text-[#15803D]' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {order.status === 'pending' ? 'En attente' :
-                                     order.status === 'paid' ? 'Payée' :
-                                     order.status === 'processing' ? 'En préparation' :
-                                     order.status === 'shipped' ? 'Expédiée' :
-                                     order.status === 'delivered' ? 'Livrée' : order.status}
-                                  </span>
-                                  <span className={`inline-block px-3 py-1 text-xs uppercase tracking-wider ${
-                                    order.paymentStatus === 'paid' ? 'bg-[#15803D]/10 text-[#15803D]' :
-                                    order.paymentStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {order.paymentStatus === 'paid' ? 'Payé' : 
-                                     order.paymentStatus === 'pending' ? 'Paiement en attente' : order.paymentStatus}
-                                  </span>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <p className="text-[#6B6560]">Client:</p>
-                                    <p>{order.customerFirstName} {order.customerLastName}</p>
-                                    <p className="text-[#6B6560]">{order.customerEmail}</p>
-                                    <p className="text-[#6B6560]">{order.customerPhone}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[#6B6560]">Livraison:</p>
-                                    <p>{order.shippingAddress || 'Non spécifiée'}</p>
-                                    <p>{order.shippingCity || ''} {order.shippingCountry || ''}</p>
-                                  </div>
-                                </div>
-
-                                <div className="mt-4 pt-4 border-t border-[#E5E0DA]">
-                                  <p className="text-[#6B6560] text-xs uppercase tracking-wider mb-2">Articles:</p>
-                                  {order.items.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between text-sm py-1">
-                                      <span>{item.productName} - {item.size}{item.colorName ? `, ${item.colorName}` : ''} x{item.quantity}</span>
-                                      <span>{formatPrice(item.totalPrice)}</span>
-                                    </div>
-                                  ))}
-                                  <div className="flex justify-between font-medium mt-2 pt-2 border-t border-[#E5E0DA]">
-                                    <span>Total</span>
-                                    <span>{formatPrice(order.total)}</span>
-                                  </div>
-                                </div>
-
-                                {order.trackingNumber && (
-                                  <div className="mt-4 p-3 bg-[#EDE8E1] text-sm">
-                                    <p><strong>Numéro de suivi:</strong> {order.trackingNumber}</p>
-                                  </div>
-                                )}
-
-                                <p className="text-xs text-[#6B6560] mt-4">
-                                  Créée le {new Date(order.createdAt).toLocaleDateString('fr-FR')} à {new Date(order.createdAt).toLocaleTimeString('fr-FR')}
-                                </p>
-                              </div>
-
-                              {/* Actions */}
-                              <div className="flex flex-col gap-2 lg:w-48">
-                                <select
-                                  value={order.status}
-                                  onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                                  className="p-2 border border-[#E5E0DA] text-sm"
-                                >
-                                  <option value="pending">En attente</option>
-                                  <option value="paid">Payée</option>
-                                  <option value="processing">En préparation</option>
-                                  <option value="shipped">Expédiée</option>
-                                  <option value="delivered">Livrée</option>
-                                  <option value="cancelled">Annulée</option>
-                                </select>
-
-                                {order.status === 'shipped' && !order.trackingNumber && (
-                                  <input
-                                    type="text"
-                                    placeholder="Numéro de suivi"
-                                    className="p-2 border border-[#E5E0DA] text-sm"
-                                    onBlur={(e) => {
-                                      if (e.target.value) {
-                                        updateOrderStatus(order.id, order.status, e.target.value)
-                                      }
-                                    }}
-                                  />
-                                )}
-
-                                <button
-                                  onClick={() => deleteOrder(order.id, order.orderNumber)}
-                                  className="bg-red-500 text-white text-center py-2 text-xs uppercase tracking-wider hover:bg-red-600 transition-colors"
-                                >
-                                  Supprimer
-                                </button>
-
-                                <a
-                                  href={getWhatsAppLink(`Bonjour, concernant votre commande ${order.orderNumber}...`)}
-                                  target="_blank"
-                                  rel="noopener"
-                                  className="bg-[#9C7C5C] text-white text-center py-2 text-xs uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors"
-                                >
-                                  Contacter client
-                                </a>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
+                <AdminOrdersTab
+                  orders={adminOrders}
+                  orderFilter={adminOrderFilter}
+                  setOrderFilter={setAdminOrderFilter}
+                  onUpdateOrderStatus={updateOrderStatus}
+                  onDeleteOrder={deleteOrder}
+                  getWhatsAppLink={getWhatsAppLink}
+                />
               )}
 
               {/* Products Tab */}
@@ -3714,195 +3571,18 @@ export default function Home() {
 
               {/* Users Tab */}
               {adminTab === 'users' && (
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-display text-lg text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Gestion des utilisateurs</h3>
-                    <button 
-                      onClick={() => {
-                        setEditingUser(null)
-                        setNewUserData({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'customer' })
-                        setShowUserForm(true)
-                      }}
-                      className="px-4 py-2 bg-[#0A0A0A] text-[#F8F6F3] text-sm uppercase tracking-wider hover:bg-[#9C7C5C] transition-colors"
-                    >
-                      + Nouvel utilisateur
-                    </button>
-                  </div>
-
-                  {/* User Form Modal */}
-                  {showUserForm && (
-                    <div className="bg-white p-6 shadow-sm mb-6">
-                      <h4 className="font-medium mb-4">{editingUser ? 'Modifier l\'utilisateur' : 'Créer un nouvel utilisateur'}</h4>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs text-[#6B6560] mb-1">Email *</label>
-                          <input 
-                            type="email" 
-                            value={editingUser ? editingUser.email : newUserData.email}
-                            onChange={(e) => !editingUser && setNewUserData({...newUserData, email: e.target.value})}
-                            disabled={!!editingUser}
-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C] disabled:bg-[#EDE8E1]"
-                          />
-                        </div>
-                        {!editingUser && (
-                          <div>
-                            <label className="block text-xs text-[#6B6560] mb-1">Mot de passe *</label>
-                            <input 
-                              type="password" 
-                              value={newUserData.password}
-                              onChange={(e) => setNewUserData({...newUserData, password: e.target.value})}
-                              className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
-                            />
-                          </div>
-                        )}
-                        <div>
-                          <label className="block text-xs text-[#6B6560] mb-1">Prénom</label>
-                          <input 
-                            type="text" 
-                            value={editingUser ? editingUser.firstName || '' : newUserData.firstName}
-                            onChange={(e) => editingUser 
-                              ? setEditingUser({...editingUser, firstName: e.target.value})
-                              : setNewUserData({...newUserData, firstName: e.target.value})
-                            }
-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-[#6B6560] mb-1">Nom</label>
-                          <input 
-                            type="text" 
-                            value={editingUser ? editingUser.lastName || '' : newUserData.lastName}
-                            onChange={(e) => editingUser 
-                              ? setEditingUser({...editingUser, lastName: e.target.value})
-                              : setNewUserData({...newUserData, lastName: e.target.value})
-                            }
-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-[#6B6560] mb-1">Téléphone</label>
-                          <input 
-                            type="tel" 
-                            value={editingUser ? editingUser.phone || '' : newUserData.phone}
-                            onChange={(e) => editingUser 
-                              ? setEditingUser({...editingUser, phone: e.target.value})
-                              : setNewUserData({...newUserData, phone: e.target.value})
-                            }
-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-[#6B6560] mb-1">Rôle</label>
-                          <select 
-                            value={editingUser ? editingUser.role : newUserData.role}
-                            onChange={(e) => editingUser 
-                              ? setEditingUser({...editingUser, role: e.target.value})
-                              : setNewUserData({...newUserData, role: e.target.value})
-                            }
-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
-                          >
-                            <option value="customer">Client</option>
-                            <option value="manager">Manager / Gestionnaire</option>
-                            <option value="admin">Administrateur</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="flex gap-3 mt-6">
-                        <button 
-                          onClick={() => editingUser ? handleUpdateUser(editingUser.id, editingUser) : handleCreateUser()}
-                          className="px-6 py-2 bg-[#9C7C5C] text-white text-sm uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors"
-                        >
-                          {editingUser ? 'Enregistrer' : 'Créer'}
-                        </button>
-                        <button 
-                          onClick={() => { setShowUserForm(false); setEditingUser(null) }}
-                          className="px-6 py-2 border border-[#E5E0DA] text-[#0A0A0A] text-sm uppercase tracking-wider hover:border-[#9C7C5C] transition-colors"
-                        >
-                          Annuler
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Users List */}
-                  <div className="bg-white shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-[#EDE8E1]">
-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Email</th>
-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Nom</th>
-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Téléphone</th>
-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Rôle</th>
-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Statut</th>
-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Commandes</th>
-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {adminUsers.map((u) => (
-                            <tr key={u.id} className="border-b border-[#E5E0DA] hover:bg-gray-50">
-                              <td className="p-4">
-                                <p className="font-medium text-[#0A0A0A]">{u.email}</p>
-                              </td>
-                              <td className="p-4">
-                                <p className="text-[#0A0A0A]">{u.firstName} {u.lastName}</p>
-                              </td>
-                              <td className="p-4">
-                                <p className="text-[#6B6560]">{u.phone || '-'}</p>
-                              </td>
-                              <td className="p-4">
-                                <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                                  u.role === 'admin' ? 'bg-purple-100 text-purple-800' :
-                                  u.role === 'manager' ? 'bg-blue-100 text-blue-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'Client'}
-                                </span>
-                              </td>
-                              <td className="p-4">
-                                <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                                  u.isActive ? 'bg-[#15803D]/10 text-[#15803D]' : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {u.isActive ? 'Actif' : 'Inactif'}
-                                </span>
-                              </td>
-                              <td className="p-4">
-                                <p className="text-[#6B6560]">{(u as { _count?: { orders: number } })._count?.orders || 0}</p>
-                              </td>
-                              <td className="p-4">
-                                <button 
-                                  onClick={() => {
-                                    setEditingUser(u)
-                                    setShowUserForm(true)
-                                  }}
-                                  className="text-[#9C7C5C] hover:text-[#0A0A0A] text-xs uppercase font-bold mr-3"
-                                >
-                                  Modifier
-                                </button>
-                                <button 
-                                  onClick={() => handleUpdateUser(u.id, { isActive: !u.isActive })}
-                                  className="text-[#6B6560] hover:text-[#0A0A0A] text-xs uppercase font-bold mr-3"
-                                >
-                                  {u.isActive ? 'Désactiver' : 'Activer'}
-                                </button>
-                                <button 
-                                  onClick={() => handleDeleteUser(u.id)}
-                                  className="text-red-600 hover:text-red-800 text-xs uppercase font-bold"
-                                >
-                                  Supprimer
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {adminUsers.length === 0 && (
-                      <div className="p-12 text-center text-[#6B6560]">Aucun utilisateur dans la base de données.</div>
-                    )}
-                  </div>
-                </div>
+                <AdminUsersTab
+                  users={adminUsers}
+                  showUserForm={showUserForm}
+                  setShowUserForm={setShowUserForm}
+                  editingUser={editingUser}
+                  setEditingUser={setEditingUser}
+                  newUserData={newUserData}
+                  setNewUserData={setNewUserData}
+                  onCreateUser={handleCreateUser}
+                  onUpdateUser={handleUpdateUser}
+                  onDeleteUser={handleDeleteUser}
+                />
               )}
               </>
               )}

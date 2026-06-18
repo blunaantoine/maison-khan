@@ -74,3 +74,46 @@ Stage Summary:
 - Affiche des KPIs réels (CA, panier moyen, taux de conversion, nb utilisateurs=3), un graphique de revenus 30 jours en SVG, la répartition des statuts, le top produits, les dernières commandes et les méthodes de paiement.
 - Gère correctement les états vides (aucune commande/vente dans la BDD sandbox).
 - Sécurité JWT/RBAC intacte (l'API /api/admin/stats est protégée par le middleware + re-vérification DB).
+
+---
+Task ID: C-1
+Agent: Main (Z.ai Code)
+Task: Option C — Refactoring : extraire les onglets admin de page.tsx vers src/components/admin/
+
+Work Log:
+- Lu le worklog précédent (Options D-1 et D-2 terminées).
+- Analysé la structure de la section admin dans page.tsx :
+  - Section admin : ~lignes 3177-3911 (avant extraction)
+  - Dashboard tab : déjà extrait (AdminDashboard) lors de l'Option D
+  - Orders tab : lignes 3276-3430 (155 lignes) — self-contained
+  - Products tab : lignes 3433-3713 (280 lignes) — complexe, lié au formulaire produit
+  - Users tab : lignes 3716-3906 (190 lignes) — self-contained avec form modal
+- Créé `src/components/admin/types.ts` : types partagés (Order, OrderItem, Payment, User, NewUserData) + formatPrice utilitaire, pour découpler les composants admin du monolithe page.tsx. Rendu `isActive`, `createdAt`, `_count` optionnels pour compatibilité structurelle avec l'interface User de page.tsx.
+- Créé `src/components/admin/AdminOrdersTab.tsx` : composant autonome pour l'onglet Commandes. Props : orders, orderFilter, setOrderFilter, onUpdateOrderStatus, onDeleteOrder, getWhatsAppLink. Inclut les filtres (Toutes/En attente/Payées/etc.), la liste des commandes avec badges statut/paiement, les actions (select statut, tracking, supprimer, contacter WhatsApp). Constantes STATUS_LABELS/STATUS_BADGE/PAYMENT_BADGE/FILTERS extraites pour clarté.
+- Créé `src/components/admin/AdminUsersTab.tsx` : composant autonome pour l'onglet Utilisateurs. Props : users, showUserForm, setShowUserForm, editingUser, setEditingUser, newUserData, setNewUserData, onCreateUser, onUpdateUser, onDeleteUser. Inclut le bouton "Nouvel utilisateur", le form modal (création/édition), et la table des utilisateurs avec colonnes Email/Nom/Téléphone/Rôle/Statut/Commandes/Actions. Constantes ROLE_BADGE/ROLE_LABEL extraites.
+- Câblage dans page.tsx via script Python (remplacement précis par marqueurs) :
+  - Ajouté les imports AdminOrdersTab et AdminUsersTab.
+  - Remplacé le bloc Orders (155 lignes) par <AdminOrdersTab .../>.
+  - Remplacé le bloc Users (190 lignes) par <AdminUsersTab .../>.
+  - Corrigé manuellement la fermeture du fragment </> et du ternary de contrôle d'accès qui avaient été absorbés par le remplacement.
+- Résultat : page.tsx passé de 4729 à 4407 lignes (-322 lignes, -6.8%).
+
+Vérification Agent Browser :
+- Session admin toujours active (cookie JWT HttpOnly persistant après reload).
+- Navigué vers la section admin, testé les 4 onglets systématiquement :
+  - Dashboard : OK (KPIs, graphique, "Données calculées le 18 juin 2026 à 10:27")
+  - Orders : OK (filtres TOUTES/EN ATTENTE/PAYÉES/etc. + état vide "Aucune commande à afficher")
+  - Users : OK (table avec 3 utilisateurs, colonnes complètes, boutons MODIFIER/DÉSACTIVER/SUPPRIMER)
+  - Products : OK (non extrait, mais structure préservée — "Logo du Site" visible)
+- Testé le bouton "Nouvel utilisateur" → le form modal s'ouvre correctement ("Créer un nouvel utilisateur").
+- Testé le bouton "Annuler" → ferme le modal.
+- Aucune erreur console, aucun erreur runtime, /api/admin/stats retourne 200.
+- Vérification VLM sur la capture de l'onglet Users : "Table bien formatée, pas de problèmes visuels. Colonnes: EMAIL, NOM, TÉLÉPHONE, RÔLE, STATUT, COMMANDES, ACTIONS. 3 utilisateurs."
+
+Stage Summary:
+- Option C (partie 1) TERMINÉE : 2 onglets admin extraits (Orders + Users) vers src/components/admin/.
+- page.tsx réduit de 322 lignes (-6.8%).
+- Composants admin maintenant modulaires : AdminDashboard, AdminOrdersTab, AdminUsersTab + types.ts partagé.
+- L'onglet Products (280 lignes) n'a PAS été extrait : il est profondément lié à l'état du formulaire produit (editingProduct, formData, colors, showProductFormModal, etc.) — extraction possible mais nécessiterait de passer ~15 props. Laisser pour une itération future.
+- Toute la fonctionnalité admin préservée et validée visuellement.
+- Sécurité JWT/RBAC intacte (les composants ne font que recevoir des props ; les appels API restent protégés par le middleware).
