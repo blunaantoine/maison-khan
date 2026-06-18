@@ -1,0 +1,1963 @@
+diff --git a/.gitignore b/.gitignore
+index 320457f..97d93d4 100755
+--- a/.gitignore
++++ b/.gitignore
+@@ -49,4 +49,15 @@ prompt
+ 
+ server.log
+ # Skills directory
+-/skills/
+\ No newline at end of file
++/skills/
++# === Sécurité & fichiers sandbox (ne jamais pousser) ===
++.env
++.env.*
++!.env.example
++db/*.db
++db/*.db-journal
++
++# Captures d'écran et logs de dev
++preview-*.png
++worklog.md
++server.log
+diff --git a/src/app/api/admin/stats/route.ts b/src/app/api/admin/stats/route.ts
+new file mode 100644
+index 0000000..7251943
+--- /dev/null
++++ b/src/app/api/admin/stats/route.ts
+@@ -0,0 +1,269 @@
++import { NextRequest, NextResponse } from 'next/server'
++import { db } from '@/lib/db'
++
++/**
++ * GET /api/admin/stats
++ *
++ * Tableau de bord — statistiques agrégées pour l'espace admin/manager.
++ *
++ * Défense en profondeur : le middleware a déjà vérifié le JWT et le rôle,
++ * mais on re-vérifie en base (rôle / isActive) au cas où l'utilisateur
++ * aurait été désactivé ou rétrogradé après l'émission du token.
++ */
++async function authorize(request: NextRequest) {
++  const userId = request.headers.get('x-auth-user-id')
++  const role = request.headers.get('x-auth-role')
++  if (!userId || !role) return null
++  const user = await db.user.findUnique({
++    where: { id: userId },
++    select: { id: true, role: true, isActive: true },
++  })
++  if (!user || !user.isActive) return null
++  if (user.role !== role) return null
++  if (user.role !== 'admin' && user.role !== 'manager') return null
++  return user
++}
++
++export async function GET(request: NextRequest) {
++  try {
++    const authUser = await authorize(request)
++    if (!authUser) {
++      return NextResponse.json(
++        { error: 'Accès non autorisé' },
++        { status: 403 }
++      )
++    }
++
++    // Fenêtre de temps : 30 derniers jours
++    const now = new Date()
++    const thirtyDaysAgo = new Date(now)
++    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29) // 30 jours inclus aujourd'hui
++    thirtyDaysAgo.setHours(0, 0, 0, 0)
++
++    const startOfToday = new Date(now)
++    startOfToday.setHours(0, 0, 0, 0)
++
++    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
++
++    // ──────────────────────────────────────────────────────────────
++    // 1. Compteurs globaux (KPIs)
++    // ──────────────────────────────────────────────────────────────
++    const [
++      allOrders,
++      paidOrders,
++      totalProducts,
++      activeProducts,
++      totalUsers,
++      newUsersThisMonth,
++      activeCarts,
++    ] = await Promise.all([
++      db.order.findMany({
++        select: {
++          id: true,
++          total: true,
++          status: true,
++          paymentStatus: true,
++          paymentMethod: true,
++          createdAt: true,
++        },
++      }),
++      db.order.findMany({
++        where: { paymentStatus: 'paid' },
++        select: { total: true, createdAt: true, paymentMethod: true },
++      }),
++      db.product.count(),
++      db.product.count({ where: { isActive: true } }),
++      db.user.count(),
++      db.user.count({ where: { createdAt: { gte: startOfMonth } } }),
++      db.cartItem.count(),
++    ])
++
++    const totalRevenue = paidOrders.reduce((sum, o) => sum + o.total, 0)
++    const totalOrders = allOrders.length
++    const avgOrderValue = paidOrders.length > 0 ? Math.round(totalRevenue / paidOrders.length) : 0
++    const conversionRate =
++      totalOrders > 0
++        ? Math.round((paidOrders.length / totalOrders) * 1000) / 10 // 1 décimale
++        : 0
++
++    // Revenu aujourd'hui
++    const revenueToday = paidOrders
++      .filter((o) => o.createdAt >= startOfToday)
++      .reduce((sum, o) => sum + o.total, 0)
++
++    // Revenu ce mois-ci
++    const revenueThisMonth = paidOrders
++      .filter((o) => o.createdAt >= startOfMonth)
++      .reduce((sum, o) => sum + o.total, 0)
++
++    // ──────────────────────────────────────────────────────────────
++    // 2. Tendance du revenu — 30 derniers jours
++    // ──────────────────────────────────────────────────────────────
++    const revenueByDay: { date: string; revenue: number; orders: number }[] = []
++    for (let i = 29; i >= 0; i--) {
++      const day = new Date(thirtyDaysAgo)
++      day.setDate(thirtyDaysAgo.getDate() + i)
++      const dayStart = new Date(day)
++      dayStart.setHours(0, 0, 0, 0)
++      const dayEnd = new Date(day)
++      dayEnd.setHours(23, 59, 59, 999)
++
++      const dayOrders = paidOrders.filter(
++        (o) => o.createdAt >= dayStart && o.createdAt <= dayEnd
++      )
++      revenueByDay.push({
++        date: dayStart.toISOString().slice(0, 10),
++        revenue: dayOrders.reduce((sum, o) => sum + o.total, 0),
++        orders: dayOrders.length,
++      })
++    }
++
++    // ──────────────────────────────────────────────────────────────
++    // 3. Répartition des commandes par statut
++    // ──────────────────────────────────────────────────────────────
++    const statusCounts: Record<string, number> = {}
++    for (const o of allOrders) {
++      statusCounts[o.status] = (statusCounts[o.status] || 0) + 1
++    }
++
++    // ──────────────────────────────────────────────────────────────
++    // 4. Répartition par méthode de paiement (payées)
++    // ──────────────────────────────────────────────────────────────
++    const paymentMethodCounts: Record<string, { count: number; revenue: number }> = {}
++    for (const o of paidOrders) {
++      const method = o.paymentMethod || 'inconnu'
++      if (!paymentMethodCounts[method]) {
++        paymentMethodCounts[method] = { count: 0, revenue: 0 }
++      }
++      paymentMethodCounts[method].count += 1
++      paymentMethodCounts[method].revenue += o.total
++    }
++
++    // ──────────────────────────────────────────────────────────────
++    // 5. Top 5 produits (par quantité vendue, commandes payées)
++    // ──────────────────────────────────────────────────────────────
++    const paidOrderIds = (
++      await db.order.findMany({
++        where: { paymentStatus: 'paid' },
++        select: { id: true },
++      })
++    ).map((o) => o.id)
++
++    let topProducts: {
++      id: string
++      name: string
++      image: string
++      quantitySold: number
++      revenue: number
++    }[] = []
++
++    if (paidOrderIds.length > 0) {
++      const orderItems = await db.orderItem.findMany({
++        where: { orderId: { in: paidOrderIds } },
++        select: {
++          productId: true,
++          productName: true,
++          productImage: true,
++          quantity: true,
++          totalPrice: true,
++        },
++      })
++
++      const productMap = new Map<
++        string,
++        { name: string; image: string; quantity: number; revenue: number }
++      >()
++      for (const item of orderItems) {
++        if (!item.productId) continue
++        const existing = productMap.get(item.productId)
++        if (existing) {
++          existing.quantity += item.quantity
++          existing.revenue += item.totalPrice
++        } else {
++          productMap.set(item.productId, {
++            name: item.productName,
++            image: item.productImage || '',
++            quantity: item.quantity,
++            revenue: item.totalPrice,
++          })
++        }
++      }
++
++      topProducts = Array.from(productMap.entries())
++        .map(([id, val]) => ({ id, ...val }))
++        .sort((a, b) => b.quantity - a.quantity)
++        .slice(0, 5)
++    }
++
++    // ──────────────────────────────────────────────────────────────
++    // 6. 5 dernières commandes
++    // ──────────────────────────────────────────────────────────────
++    const recentOrders = await db.order.findMany({
++      take: 5,
++      orderBy: { createdAt: 'desc' },
++      select: {
++        id: true,
++        orderNumber: true,
++        customerFirstName: true,
++        customerLastName: true,
++        customerEmail: true,
++        total: true,
++        status: true,
++        paymentStatus: true,
++        createdAt: true,
++      },
++    })
++
++    // ──────────────────────────────────────────────────────────────
++    // 7. Nouveaux utilisateurs — 30 derniers jours (tendance)
++    // ──────────────────────────────────────────────────────────────
++    const recentUsers = await db.user.findMany({
++      where: { createdAt: { gte: thirtyDaysAgo } },
++      select: { createdAt: true, role: true },
++    })
++    const usersByDay: { date: string; count: number }[] = []
++    for (let i = 29; i >= 0; i--) {
++      const day = new Date(thirtyDaysAgo)
++      day.setDate(thirtyDaysAgo.getDate() + i)
++      const dayStart = new Date(day)
++      dayStart.setHours(0, 0, 0, 0)
++      const dayEnd = new Date(day)
++      dayEnd.setHours(23, 59, 59, 999)
++      const count = recentUsers.filter(
++        (u) => u.createdAt >= dayStart && u.createdAt <= dayEnd
++      ).length
++      usersByDay.push({ date: dayStart.toISOString().slice(0, 10), count })
++    }
++
++    return NextResponse.json({
++      kpis: {
++        totalRevenue,
++        revenueToday,
++        revenueThisMonth,
++        totalOrders,
++        paidOrders: paidOrders.length,
++        pendingOrders: statusCounts['pending'] || 0,
++        avgOrderValue,
++        conversionRate,
++        totalProducts,
++        activeProducts,
++        totalUsers,
++        newUsersThisMonth,
++        activeCarts,
++      },
++      revenueByDay,
++      usersByDay,
++      statusCounts,
++      paymentMethodCounts,
++      topProducts,
++      recentOrders,
++      generatedAt: now.toISOString(),
++    })
++  } catch (error) {
++    console.error('Admin stats error:', error)
++    return NextResponse.json(
++      { error: 'Erreur lors du calcul des statistiques' },
++      { status: 500 }
++    )
++  }
++}
+diff --git a/src/app/page.tsx b/src/app/page.tsx
+index 7c34a4c..363b8d4 100755
+--- a/src/app/page.tsx
++++ b/src/app/page.tsx
+@@ -3,6 +3,9 @@
+ import { useState, useEffect, useRef, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react'
+ import { createPortal } from 'react-dom'
+ import { useRouter } from 'next/navigation'
++import { AdminDashboard } from '@/components/admin/AdminDashboard'
++import { AdminOrdersTab } from '@/components/admin/AdminOrdersTab'
++import { AdminUsersTab } from '@/components/admin/AdminUsersTab'
+ 
+ // DÉBUT FEDAPAY TYPE DECLARATION
+ declare global {
+@@ -875,6 +878,47 @@ interface Payment {
+   createdAt: string
+ }
+ 
++interface AdminDashboardStats {
++  kpis: {
++    totalRevenue: number
++    revenueToday: number
++    revenueThisMonth: number
++    totalOrders: number
++    paidOrders: number
++    pendingOrders: number
++    avgOrderValue: number
++    conversionRate: number
++    totalProducts: number
++    activeProducts: number
++    totalUsers: number
++    newUsersThisMonth: number
++    activeCarts: number
++  }
++  revenueByDay: { date: string; revenue: number; orders: number }[]
++  usersByDay: { date: string; count: number }[]
++  statusCounts: Record<string, number>
++  paymentMethodCounts: Record<string, { count: number; revenue: number }>
++  topProducts: {
++    id: string
++    name: string
++    image: string
++    quantitySold: number
++    revenue: number
++  }[]
++  recentOrders: {
++    id: string
++    orderNumber: string
++    customerFirstName: string | null
++    customerLastName: string | null
++    customerEmail: string
++    total: number
++    status: string
++    paymentStatus: string
++    createdAt: string
++  }[]
++  generatedAt: string
++}
++
+ // Helper function to format price
+ const formatPrice = (price: number | undefined | null) => {
+   if (price === undefined || price === null || isNaN(price)) {
+@@ -976,7 +1020,9 @@ export default function Home() {
+   const [videoMuted, setVideoMuted] = useState(true)
+   const [videoPlaying, setVideoPlaying] = useState(true)
+   const [adminPassword, setAdminPassword] = useState('')
+-  const [adminTab, setAdminTab] = useState<'products' | 'orders' | 'users' | 'settings'>('products')
++  const [adminTab, setAdminTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'settings'>('dashboard')
++  const [dashboardStats, setDashboardStats] = useState<AdminDashboardStats | null>(null)
++  const [dashboardLoading, setDashboardLoading] = useState(false)
+   const [adminOrders, setAdminOrders] = useState<Order[]>([])
+   const [adminOrderFilter, setAdminOrderFilter] = useState<string>('all')
+   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
+@@ -1226,8 +1272,25 @@ export default function Home() {
+     }
+   }
+ 
++  // Fetch dashboard statistics (KPIs, trends, top products)
++  const fetchDashboardStats = async () => {
++    setDashboardLoading(true)
++    try {
++      const res = await fetch('/api/admin/stats', { credentials: 'include' })
++      if (res.ok) {
++        const data = await res.json()
++        setDashboardStats(data)
++      }
++    } catch (error) {
++      console.error('Error fetching dashboard stats:', error)
++    } finally {
++      setDashboardLoading(false)
++    }
++  }
++
+   useEffect(() => {
+     if (currentSection === 'admin' && (user?.role === 'admin' || user?.role === 'manager')) {
++      fetchDashboardStats()
+       fetchAdminOrders()
+       if (user?.role === 'admin') {
+         fetchAdminUsers()
+@@ -3175,17 +3238,19 @@ export default function Home() {
+               </div>
+ 
+               {/* Admin Tabs */}
+-              <div className="flex gap-4 border-b border-[#E5E0DA] mb-8">
++              <div className="flex flex-wrap gap-4 border-b border-[#E5E0DA] mb-8">
+                 {[
++                  { id: 'dashboard', label: 'Tableau de bord', roles: ['admin', 'manager'] },
+                   { id: 'products', label: 'Produits', roles: ['admin'] },
+                   { id: 'orders', label: 'Commandes', roles: ['admin', 'manager'] },
+                   { id: 'users', label: 'Utilisateurs', roles: ['admin'] }
+                 ].filter(tab => tab.roles.includes(user?.role || '')).map(tab => (
+                   <button
+                     key={tab.id}
+-                    onClick={() => { 
+-                      setAdminTab(tab.id as 'products' | 'orders' | 'users')
++                    onClick={() => {
++                      setAdminTab(tab.id as 'dashboard' | 'products' | 'orders' | 'users')
+                       if (tab.id === 'users') fetchAdminUsers()
++                      if (tab.id === 'dashboard') fetchDashboardStats()
+                     }}
+                     className={`py-3 px-4 text-sm uppercase tracking-wider transition-colors ${
+                       adminTab === tab.id
+@@ -3198,161 +3263,27 @@ export default function Home() {
+                 ))}
+               </div>
+ 
++              {/* Dashboard Tab */}
++              {adminTab === 'dashboard' && (
++                <AdminDashboard
++                  stats={dashboardStats}
++                  loading={dashboardLoading}
++                  onRefresh={fetchDashboardStats}
++                  onGoToOrders={() => setAdminTab('orders')}
++                  onGoToProducts={() => setAdminTab('products')}
++                />
++              )}
++
+               {/* Orders Tab */}
+               {adminTab === 'orders' && (
+-                <div className="space-y-6">
+-                  {/* Order Filters */}
+-                  <div className="flex flex-wrap gap-3 mb-6">
+-                    {[
+-                      { id: 'all', label: 'Toutes' },
+-                      { id: 'pending', label: 'En attente' },
+-                      { id: 'paid', label: 'Payées' },
+-                      { id: 'processing', label: 'En préparation' },
+-                      { id: 'shipped', label: 'Expédiées' },
+-                      { id: 'delivered', label: 'Livrées' }
+-                    ].map(filter => (
+-                      <button
+-                        key={filter.id}
+-                        onClick={() => setAdminOrderFilter(filter.id)}
+-                        className={`px-4 py-2 text-sm uppercase tracking-wider transition-colors ${
+-                          adminOrderFilter === filter.id
+-                            ? 'bg-[#9C7C5C] text-white'
+-                            : 'bg-white text-[#0A0A0A] border border-[#E5E0DA] hover:border-[#9C7C5C]'
+-                        }`}
+-                      >
+-                        {filter.label}
+-                      </button>
+-                    ))}
+-                  </div>
+-
+-                  {/* Orders List */}
+-                  {adminOrders.filter(o => adminOrderFilter === 'all' || o.status === adminOrderFilter).length === 0 ? (
+-                    <div className="bg-white p-12 text-center">
+-                      <p className="text-[#6B6560]">Aucune commande à afficher</p>
+-                    </div>
+-                  ) : (
+-                    <div className="space-y-4">
+-                      {adminOrders
+-                        .filter(o => adminOrderFilter === 'all' || o.status === adminOrderFilter)
+-                        .map(order => (
+-                          <div key={order.id} className="bg-white p-6 shadow-sm">
+-                            <div className="flex flex-col lg:flex-row justify-between gap-4">
+-                              <div className="flex-1">
+-                                <div className="flex items-center gap-4 mb-3">
+-                                  <h3 className="font-medium text-lg">{order.orderNumber}</h3>
+-                                  <span className={`inline-block px-3 py-1 text-xs uppercase tracking-wider ${
+-                                    order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+-                                    order.status === 'paid' ? 'bg-blue-100 text-blue-800' :
+-                                    order.status === 'processing' ? 'bg-indigo-100 text-indigo-800' :
+-                                    order.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
+-                                    order.status === 'delivered' ? 'bg-[#15803D]/10 text-[#15803D]' :
+-                                    'bg-red-100 text-red-800'
+-                                  }`}>
+-                                    {order.status === 'pending' ? 'En attente' :
+-                                     order.status === 'paid' ? 'Payée' :
+-                                     order.status === 'processing' ? 'En préparation' :
+-                                     order.status === 'shipped' ? 'Expédiée' :
+-                                     order.status === 'delivered' ? 'Livrée' : order.status}
+-                                  </span>
+-                                  <span className={`inline-block px-3 py-1 text-xs uppercase tracking-wider ${
+-                                    order.paymentStatus === 'paid' ? 'bg-[#15803D]/10 text-[#15803D]' :
+-                                    order.paymentStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+-                                    'bg-red-100 text-red-800'
+-                                  }`}>
+-                                    {order.paymentStatus === 'paid' ? 'Payé' : 
+-                                     order.paymentStatus === 'pending' ? 'Paiement en attente' : order.paymentStatus}
+-                                  </span>
+-                                </div>
+-                                
+-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+-                                  <div>
+-                                    <p className="text-[#6B6560]">Client:</p>
+-                                    <p>{order.customerFirstName} {order.customerLastName}</p>
+-                                    <p className="text-[#6B6560]">{order.customerEmail}</p>
+-                                    <p className="text-[#6B6560]">{order.customerPhone}</p>
+-                                  </div>
+-                                  <div>
+-                                    <p className="text-[#6B6560]">Livraison:</p>
+-                                    <p>{order.shippingAddress || 'Non spécifiée'}</p>
+-                                    <p>{order.shippingCity || ''} {order.shippingCountry || ''}</p>
+-                                  </div>
+-                                </div>
+-
+-                                <div className="mt-4 pt-4 border-t border-[#E5E0DA]">
+-                                  <p className="text-[#6B6560] text-xs uppercase tracking-wider mb-2">Articles:</p>
+-                                  {order.items.map((item, idx) => (
+-                                    <div key={idx} className="flex justify-between text-sm py-1">
+-                                      <span>{item.productName} - {item.size}{item.colorName ? `, ${item.colorName}` : ''} x{item.quantity}</span>
+-                                      <span>{formatPrice(item.totalPrice)}</span>
+-                                    </div>
+-                                  ))}
+-                                  <div className="flex justify-between font-medium mt-2 pt-2 border-t border-[#E5E0DA]">
+-                                    <span>Total</span>
+-                                    <span>{formatPrice(order.total)}</span>
+-                                  </div>
+-                                </div>
+-
+-                                {order.trackingNumber && (
+-                                  <div className="mt-4 p-3 bg-[#EDE8E1] text-sm">
+-                                    <p><strong>Numéro de suivi:</strong> {order.trackingNumber}</p>
+-                                  </div>
+-                                )}
+-
+-                                <p className="text-xs text-[#6B6560] mt-4">
+-                                  Créée le {new Date(order.createdAt).toLocaleDateString('fr-FR')} à {new Date(order.createdAt).toLocaleTimeString('fr-FR')}
+-                                </p>
+-                              </div>
+-
+-                              {/* Actions */}
+-                              <div className="flex flex-col gap-2 lg:w-48">
+-                                <select
+-                                  value={order.status}
+-                                  onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+-                                  className="p-2 border border-[#E5E0DA] text-sm"
+-                                >
+-                                  <option value="pending">En attente</option>
+-                                  <option value="paid">Payée</option>
+-                                  <option value="processing">En préparation</option>
+-                                  <option value="shipped">Expédiée</option>
+-                                  <option value="delivered">Livrée</option>
+-                                  <option value="cancelled">Annulée</option>
+-                                </select>
+-
+-                                {order.status === 'shipped' && !order.trackingNumber && (
+-                                  <input
+-                                    type="text"
+-                                    placeholder="Numéro de suivi"
+-                                    className="p-2 border border-[#E5E0DA] text-sm"
+-                                    onBlur={(e) => {
+-                                      if (e.target.value) {
+-                                        updateOrderStatus(order.id, order.status, e.target.value)
+-                                      }
+-                                    }}
+-                                  />
+-                                )}
+-
+-                                <button
+-                                  onClick={() => deleteOrder(order.id, order.orderNumber)}
+-                                  className="bg-red-500 text-white text-center py-2 text-xs uppercase tracking-wider hover:bg-red-600 transition-colors"
+-                                >
+-                                  Supprimer
+-                                </button>
+-
+-                                <a
+-                                  href={getWhatsAppLink(`Bonjour, concernant votre commande ${order.orderNumber}...`)}
+-                                  target="_blank"
+-                                  rel="noopener"
+-                                  className="bg-[#9C7C5C] text-white text-center py-2 text-xs uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors"
+-                                >
+-                                  Contacter client
+-                                </a>
+-                              </div>
+-                            </div>
+-                          </div>
+-                        ))}
+-                    </div>
+-                  )}
+-                </div>
++                <AdminOrdersTab
++                  orders={adminOrders}
++                  orderFilter={adminOrderFilter}
++                  setOrderFilter={setAdminOrderFilter}
++                  onUpdateOrderStatus={updateOrderStatus}
++                  onDeleteOrder={deleteOrder}
++                  getWhatsAppLink={getWhatsAppLink}
++                />
+               )}
+ 
+               {/* Products Tab */}
+@@ -3640,195 +3571,18 @@ export default function Home() {
+ 
+               {/* Users Tab */}
+               {adminTab === 'users' && (
+-                <div className="space-y-6">
+-                  <div className="flex justify-between items-center">
+-                    <h3 className="font-display text-lg text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Gestion des utilisateurs</h3>
+-                    <button 
+-                      onClick={() => {
+-                        setEditingUser(null)
+-                        setNewUserData({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'customer' })
+-                        setShowUserForm(true)
+-                      }}
+-                      className="px-4 py-2 bg-[#0A0A0A] text-[#F8F6F3] text-sm uppercase tracking-wider hover:bg-[#9C7C5C] transition-colors"
+-                    >
+-                      + Nouvel utilisateur
+-                    </button>
+-                  </div>
+-
+-                  {/* User Form Modal */}
+-                  {showUserForm && (
+-                    <div className="bg-white p-6 shadow-sm mb-6">
+-                      <h4 className="font-medium mb-4">{editingUser ? 'Modifier l\'utilisateur' : 'Créer un nouvel utilisateur'}</h4>
+-                      <div className="grid md:grid-cols-2 gap-4">
+-                        <div>
+-                          <label className="block text-xs text-[#6B6560] mb-1">Email *</label>
+-                          <input 
+-                            type="email" 
+-                            value={editingUser ? editingUser.email : newUserData.email}
+-                            onChange={(e) => !editingUser && setNewUserData({...newUserData, email: e.target.value})}
+-                            disabled={!!editingUser}
+-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C] disabled:bg-[#EDE8E1]"
+-                          />
+-                        </div>
+-                        {!editingUser && (
+-                          <div>
+-                            <label className="block text-xs text-[#6B6560] mb-1">Mot de passe *</label>
+-                            <input 
+-                              type="password" 
+-                              value={newUserData.password}
+-                              onChange={(e) => setNewUserData({...newUserData, password: e.target.value})}
+-                              className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
+-                            />
+-                          </div>
+-                        )}
+-                        <div>
+-                          <label className="block text-xs text-[#6B6560] mb-1">Prénom</label>
+-                          <input 
+-                            type="text" 
+-                            value={editingUser ? editingUser.firstName || '' : newUserData.firstName}
+-                            onChange={(e) => editingUser 
+-                              ? setEditingUser({...editingUser, firstName: e.target.value})
+-                              : setNewUserData({...newUserData, firstName: e.target.value})
+-                            }
+-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
+-                          />
+-                        </div>
+-                        <div>
+-                          <label className="block text-xs text-[#6B6560] mb-1">Nom</label>
+-                          <input 
+-                            type="text" 
+-                            value={editingUser ? editingUser.lastName || '' : newUserData.lastName}
+-                            onChange={(e) => editingUser 
+-                              ? setEditingUser({...editingUser, lastName: e.target.value})
+-                              : setNewUserData({...newUserData, lastName: e.target.value})
+-                            }
+-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
+-                          />
+-                        </div>
+-                        <div>
+-                          <label className="block text-xs text-[#6B6560] mb-1">Téléphone</label>
+-                          <input 
+-                            type="tel" 
+-                            value={editingUser ? editingUser.phone || '' : newUserData.phone}
+-                            onChange={(e) => editingUser 
+-                              ? setEditingUser({...editingUser, phone: e.target.value})
+-                              : setNewUserData({...newUserData, phone: e.target.value})
+-                            }
+-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
+-                          />
+-                        </div>
+-                        <div>
+-                          <label className="block text-xs text-[#6B6560] mb-1">Rôle</label>
+-                          <select 
+-                            value={editingUser ? editingUser.role : newUserData.role}
+-                            onChange={(e) => editingUser 
+-                              ? setEditingUser({...editingUser, role: e.target.value})
+-                              : setNewUserData({...newUserData, role: e.target.value})
+-                            }
+-                            className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
+-                          >
+-                            <option value="customer">Client</option>
+-                            <option value="manager">Manager / Gestionnaire</option>
+-                            <option value="admin">Administrateur</option>
+-                          </select>
+-                        </div>
+-                      </div>
+-                      <div className="flex gap-3 mt-6">
+-                        <button 
+-                          onClick={() => editingUser ? handleUpdateUser(editingUser.id, editingUser) : handleCreateUser()}
+-                          className="px-6 py-2 bg-[#9C7C5C] text-white text-sm uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors"
+-                        >
+-                          {editingUser ? 'Enregistrer' : 'Créer'}
+-                        </button>
+-                        <button 
+-                          onClick={() => { setShowUserForm(false); setEditingUser(null) }}
+-                          className="px-6 py-2 border border-[#E5E0DA] text-[#0A0A0A] text-sm uppercase tracking-wider hover:border-[#9C7C5C] transition-colors"
+-                        >
+-                          Annuler
+-                        </button>
+-                      </div>
+-                    </div>
+-                  )}
+-
+-                  {/* Users List */}
+-                  <div className="bg-white shadow-sm overflow-hidden">
+-                    <div className="overflow-x-auto">
+-                      <table className="w-full">
+-                        <thead>
+-                          <tr className="bg-[#EDE8E1]">
+-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Email</th>
+-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Nom</th>
+-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Téléphone</th>
+-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Rôle</th>
+-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Statut</th>
+-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Commandes</th>
+-                            <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Actions</th>
+-                          </tr>
+-                        </thead>
+-                        <tbody>
+-                          {adminUsers.map((u) => (
+-                            <tr key={u.id} className="border-b border-[#E5E0DA] hover:bg-gray-50">
+-                              <td className="p-4">
+-                                <p className="font-medium text-[#0A0A0A]">{u.email}</p>
+-                              </td>
+-                              <td className="p-4">
+-                                <p className="text-[#0A0A0A]">{u.firstName} {u.lastName}</p>
+-                              </td>
+-                              <td className="p-4">
+-                                <p className="text-[#6B6560]">{u.phone || '-'}</p>
+-                              </td>
+-                              <td className="p-4">
+-                                <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+-                                  u.role === 'admin' ? 'bg-purple-100 text-purple-800' :
+-                                  u.role === 'manager' ? 'bg-blue-100 text-blue-800' :
+-                                  'bg-gray-100 text-gray-800'
+-                                }`}>
+-                                  {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'Client'}
+-                                </span>
+-                              </td>
+-                              <td className="p-4">
+-                                <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+-                                  u.isActive ? 'bg-[#15803D]/10 text-[#15803D]' : 'bg-red-100 text-red-800'
+-                                }`}>
+-                                  {u.isActive ? 'Actif' : 'Inactif'}
+-                                </span>
+-                              </td>
+-                              <td className="p-4">
+-                                <p className="text-[#6B6560]">{(u as { _count?: { orders: number } })._count?.orders || 0}</p>
+-                              </td>
+-                              <td className="p-4">
+-                                <button 
+-                                  onClick={() => {
+-                                    setEditingUser(u)
+-                                    setShowUserForm(true)
+-                                  }}
+-                                  className="text-[#9C7C5C] hover:text-[#0A0A0A] text-xs uppercase font-bold mr-3"
+-                                >
+-                                  Modifier
+-                                </button>
+-                                <button 
+-                                  onClick={() => handleUpdateUser(u.id, { isActive: !u.isActive })}
+-                                  className="text-[#6B6560] hover:text-[#0A0A0A] text-xs uppercase font-bold mr-3"
+-                                >
+-                                  {u.isActive ? 'Désactiver' : 'Activer'}
+-                                </button>
+-                                <button 
+-                                  onClick={() => handleDeleteUser(u.id)}
+-                                  className="text-red-600 hover:text-red-800 text-xs uppercase font-bold"
+-                                >
+-                                  Supprimer
+-                                </button>
+-                              </td>
+-                            </tr>
+-                          ))}
+-                        </tbody>
+-                      </table>
+-                    </div>
+-                    {adminUsers.length === 0 && (
+-                      <div className="p-12 text-center text-[#6B6560]">Aucun utilisateur dans la base de données.</div>
+-                    )}
+-                  </div>
+-                </div>
++                <AdminUsersTab
++                  users={adminUsers}
++                  showUserForm={showUserForm}
++                  setShowUserForm={setShowUserForm}
++                  editingUser={editingUser}
++                  setEditingUser={setEditingUser}
++                  newUserData={newUserData}
++                  setNewUserData={setNewUserData}
++                  onCreateUser={handleCreateUser}
++                  onUpdateUser={handleUpdateUser}
++                  onDeleteUser={handleDeleteUser}
++                />
+               )}
+               </>
+               )}
+diff --git a/src/components/admin/AdminDashboard.tsx b/src/components/admin/AdminDashboard.tsx
+new file mode 100644
+index 0000000..bbfdbca
+--- /dev/null
++++ b/src/components/admin/AdminDashboard.tsx
+@@ -0,0 +1,571 @@
++'use client'
++
++import { useMemo } from 'react'
++import { Card } from '@/components/ui/card'
++import { Badge } from '@/components/ui/badge'
++import { Skeleton } from '@/components/ui/skeleton'
++import { Button } from '@/components/ui/button'
++import {
++  TrendingUp,
++  ShoppingCart,
++  Users,
++  Package,
++  RefreshCw,
++  ArrowRight,
++  CircleDollarSign,
++  Clock,
++  CheckCircle2,
++} from 'lucide-react'
++
++interface AdminDashboardStats {
++  kpis: {
++    totalRevenue: number
++    revenueToday: number
++    revenueThisMonth: number
++    totalOrders: number
++    paidOrders: number
++    pendingOrders: number
++    avgOrderValue: number
++    conversionRate: number
++    totalProducts: number
++    activeProducts: number
++    totalUsers: number
++    newUsersThisMonth: number
++    activeCarts: number
++  }
++  revenueByDay: { date: string; revenue: number; orders: number }[]
++  usersByDay: { date: string; count: number }[]
++  statusCounts: Record<string, number>
++  paymentMethodCounts: Record<string, { count: number; revenue: number }>
++  topProducts: {
++    id: string
++    name: string
++    image: string
++    quantitySold: number
++    revenue: number
++  }[]
++  recentOrders: {
++    id: string
++    orderNumber: string
++    customerFirstName: string | null
++    customerLastName: string | null
++    customerEmail: string
++    total: number
++    status: string
++    paymentStatus: string
++    createdAt: string
++  }[]
++  generatedAt: string
++}
++
++interface AdminDashboardProps {
++  stats: AdminDashboardStats | null
++  loading: boolean
++  onRefresh: () => void
++  onGoToOrders: () => void
++  onGoToProducts: () => void
++}
++
++const formatPrice = (price: number | undefined | null) => {
++  if (price === undefined || price === null || isNaN(price)) {
++    return 'Prix sur demande'
++  }
++  return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' XOF'
++}
++
++const formatCompact = (n: number) => {
++  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
++  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
++  return n.toString()
++}
++
++const STATUS_LABELS: Record<string, string> = {
++  pending: 'En attente',
++  paid: 'Payée',
++  processing: 'En préparation',
++  shipped: 'Expédiée',
++  delivered: 'Livrée',
++  cancelled: 'Annulée',
++}
++
++const STATUS_COLORS: Record<string, string> = {
++  pending: 'bg-yellow-100 text-yellow-800',
++  paid: 'bg-blue-100 text-blue-800',
++  processing: 'bg-indigo-100 text-indigo-800',
++  shipped: 'bg-purple-100 text-purple-800',
++  delivered: 'bg-green-100 text-green-800',
++  cancelled: 'bg-red-100 text-red-800',
++}
++
++const PAYMENT_LABELS: Record<string, string> = {
++  paygate: 'PayGate (Moov/T-Money)',
++  fedapay: 'FedaPay',
++  card: 'Carte bancaire',
++  inconnu: 'Non spécifié',
++}
++
++export function AdminDashboard({
++  stats,
++  loading,
++  onRefresh,
++  onGoToOrders,
++  onGoToProducts,
++}: AdminDashboardProps) {
++  // Calculs dérivés pour le graphique de revenus
++  const chartData = useMemo(() => {
++    if (!stats) return { bars: [], maxRevenue: 0, total30d: 0 }
++    const maxRevenue = Math.max(...stats.revenueByDay.map((d) => d.revenue), 1)
++    const total30d = stats.revenueByDay.reduce((sum, d) => sum + d.revenue, 0)
++    return { bars: stats.revenueByDay, maxRevenue, total30d }
++  }, [stats])
++
++  const statusEntries = useMemo(() => {
++    if (!stats) return []
++    return Object.entries(stats.statusCounts)
++      .map(([status, count]) => ({ status, count, label: STATUS_LABELS[status] || status }))
++      .sort((a, b) => b.count - a.count)
++  }, [stats])
++
++  const paymentEntries = useMemo(() => {
++    if (!stats) return []
++    return Object.entries(stats.paymentMethodCounts)
++      .map(([method, data]) => ({
++        method,
++        label: PAYMENT_LABELS[method] || method,
++        ...data,
++      }))
++      .sort((a, b) => b.revenue - a.revenue)
++  }, [stats])
++
++  if (loading && !stats) {
++    return (
++      <div className="space-y-6">
++        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
++          {Array.from({ length: 4 }).map((_, i) => (
++            <Skeleton key={i} className="h-28" />
++          ))}
++        </div>
++        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
++          <Skeleton className="h-72 lg:col-span-2" />
++          <Skeleton className="h-72" />
++        </div>
++      </div>
++    )
++  }
++
++  if (!stats) {
++    return (
++      <Card className="p-12 text-center">
++        <p className="text-[#6B6560] mb-4">Impossible de charger les statistiques.</p>
++        <Button onClick={onRefresh} variant="outline">
++          <RefreshCw className="h-4 w-4 mr-2" /> Réessayer
++        </Button>
++      </Card>
++    )
++  }
++
++  const { kpis } = stats
++
++  return (
++    <div className="space-y-6">
++      {/* Header avec refresh */}
++      <div className="flex items-center justify-between">
++        <p className="text-sm text-[#6B6560]">
++          Données calculées le{' '}
++          {new Date(stats.generatedAt).toLocaleString('fr-FR', {
++            dateStyle: 'long',
++            timeStyle: 'short',
++          })}
++        </p>
++        <Button
++          onClick={onRefresh}
++          variant="outline"
++          size="sm"
++          disabled={loading}
++        >
++          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
++          Actualiser
++        </Button>
++      </div>
++
++      {/* KPI Cards */}
++      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
++        <KpiCard
++          label="Chiffre d'affaires"
++          value={formatPrice(kpis.totalRevenue)}
++          sub={`${formatPrice(kpis.revenueThisMonth)} ce mois-ci`}
++          icon={<CircleDollarSign className="h-5 w-5" />}
++          accent="#9C7C5C"
++        />
++        <KpiCard
++          label="Commandes"
++          value={kpis.totalOrders.toString()}
++          sub={`${kpis.paidOrders} payées · ${kpis.pendingOrders} en attente`}
++          icon={<ShoppingCart className="h-5 w-5" />}
++          accent="#0A0A0A"
++        />
++        <KpiCard
++          label="Panier moyen"
++          value={formatPrice(kpis.avgOrderValue)}
++          sub="sur commandes payées"
++          icon={<TrendingUp className="h-5 w-5" />}
++          accent="#15803D"
++        />
++        <KpiCard
++          label="Taux de conversion"
++          value={kpis.conversionRate + '%'}
++          sub={`${kpis.paidOrders}/${kpis.totalOrders} commandes payées`}
++          icon={<CheckCircle2 className="h-5 w-5" />}
++          accent="#B45309"
++        />
++      </div>
++
++      {/* Secondary KPIs */}
++      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
++        <MiniStat
++          label="Revenu aujourd'hui"
++          value={formatPrice(kpis.revenueToday)}
++          icon={<CircleDollarSign className="h-4 w-4" />}
++        />
++        <MiniStat
++          label="Produits actifs"
++          value={`${kpis.activeProducts} / ${kpis.totalProducts}`}
++          icon={<Package className="h-4 w-4" />}
++        />
++        <MiniStat
++          label="Utilisateurs"
++          value={`${kpis.totalUsers}`}
++          sub={`+${kpis.newUsersThisMonth} ce mois`}
++          icon={<Users className="h-4 w-4" />}
++        />
++        <MiniStat
++          label="Paniers actifs"
++          value={`${kpis.activeCarts}`}
++          icon={<ShoppingCart className="h-4 w-4" />}
++        />
++      </div>
++
++      {/* Revenue chart + Order status */}
++      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
++        {/* Revenue bar chart - last 30 days */}
++        <Card className="p-6 lg:col-span-2">
++          <div className="flex items-center justify-between mb-6">
++            <div>
++              <h3 className="font-display text-xl text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++                Revenus — 30 derniers jours
++              </h3>
++              <p className="text-sm text-[#6B6560] mt-1">
++                Total : <span className="font-medium text-[#0A0A0A]">{formatPrice(chartData.total30d)}</span>
++              </p>
++            </div>
++          </div>
++          <RevenueChart data={chartData.bars} max={chartData.maxRevenue} />
++        </Card>
++
++        {/* Order status breakdown */}
++        <Card className="p-6">
++          <h3 className="font-display text-xl text-[#0A0A0A] mb-6" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++            Statut des commandes
++          </h3>
++          {statusEntries.length === 0 ? (
++            <p className="text-sm text-[#6B6560]">Aucune commande</p>
++          ) : (
++            <div className="space-y-3">
++              {statusEntries.map(({ status, count, label }) => {
++                const pct = kpis.totalOrders > 0 ? (count / kpis.totalOrders) * 100 : 0
++                return (
++                  <div key={status}>
++                    <div className="flex justify-between text-sm mb-1">
++                      <span className="text-[#0A0A0A]">{label}</span>
++                      <span className="text-[#6B6560]">{count} · {pct.toFixed(0)}%</span>
++                    </div>
++                    <div className="h-2 bg-[#EDE8E1] overflow-hidden">
++                      <div
++                        className="h-full bg-[#9C7C5C] transition-all"
++                        style={{ width: `${pct}%` }}
++                      />
++                    </div>
++                  </div>
++                )
++              })}
++            </div>
++          )}
++          <button
++            onClick={onGoToOrders}
++            className="mt-6 text-sm text-[#9C7C5C] hover:text-[#8B6B4B] flex items-center gap-1 uppercase tracking-wider"
++          >
++            Voir les commandes <ArrowRight className="h-3 w-3" />
++          </button>
++        </Card>
++      </div>
++
++      {/* Top products + Recent orders */}
++      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
++        {/* Top products */}
++        <Card className="p-6">
++          <div className="flex items-center justify-between mb-6">
++            <h3 className="font-display text-xl text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++              Top produits
++            </h3>
++            <button
++              onClick={onGoToProducts}
++              className="text-sm text-[#9C7C5C] hover:text-[#8B6B4B] flex items-center gap-1 uppercase tracking-wider"
++            >
++              Tout voir <ArrowRight className="h-3 w-3" />
++            </button>
++          </div>
++          {stats.topProducts.length === 0 ? (
++            <div className="text-center py-8">
++              <Package className="h-10 w-10 text-[#E5E0DA] mx-auto mb-2" />
++              <p className="text-sm text-[#6B6560]">Aucune vente enregistrée pour le moment</p>
++            </div>
++          ) : (
++            <div className="space-y-3">
++              {stats.topProducts.map((product, idx) => (
++                <div key={product.id} className="flex items-center gap-4">
++                  <span className="text-xs font-medium text-[#6B6560] w-5">{idx + 1}</span>
++                  <div className="w-12 h-12 bg-[#EDE8E1] flex items-center justify-center overflow-hidden flex-shrink-0">
++                    {product.image ? (
++                      <img
++                        src={product.image}
++                        alt={product.name}
++                        className="w-full h-full object-cover"
++                      />
++                    ) : (
++                      <Package className="h-5 w-5 text-[#6B6560]" />
++                    )}
++                  </div>
++                  <div className="flex-1 min-w-0">
++                    <p className="text-sm font-medium text-[#0A0A0A] truncate">{product.name}</p>
++                    <p className="text-xs text-[#6B6560]">{product.quantitySold} vendus</p>
++                  </div>
++                  <p className="text-sm font-medium text-[#9C7C5C] flex-shrink-0">
++                    {formatPrice(product.revenue)}
++                  </p>
++                </div>
++              ))}
++            </div>
++          )}
++        </Card>
++
++        {/* Recent orders */}
++        <Card className="p-6">
++          <div className="flex items-center justify-between mb-6">
++            <h3 className="font-display text-xl text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++              Dernières commandes
++            </h3>
++            <button
++              onClick={onGoToOrders}
++              className="text-sm text-[#9C7C5C] hover:text-[#8B6B4B] flex items-center gap-1 uppercase tracking-wider"
++            >
++              Tout voir <ArrowRight className="h-3 w-3" />
++            </button>
++          </div>
++          {stats.recentOrders.length === 0 ? (
++            <div className="text-center py-8">
++              <Clock className="h-10 w-10 text-[#E5E0DA] mx-auto mb-2" />
++              <p className="text-sm text-[#6B6560]">Aucune commande pour le moment</p>
++            </div>
++          ) : (
++            <div className="space-y-3">
++              {stats.recentOrders.map((order) => (
++                <div key={order.id} className="flex items-center gap-3 pb-3 border-b border-[#E5E0DA] last:border-0 last:pb-0">
++                  <div className="flex-1 min-w-0">
++                    <p className="text-sm font-medium text-[#0A0A0A]">{order.orderNumber}</p>
++                    <p className="text-xs text-[#6B6560] truncate">
++                      {[order.customerFirstName, order.customerLastName].filter(Boolean).join(' ') || order.customerEmail}
++                    </p>
++                  </div>
++                  <Badge
++                    variant="secondary"
++                    className={`text-xs ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-800'}`}
++                  >
++                    {STATUS_LABELS[order.status] || order.status}
++                  </Badge>
++                  <p className="text-sm font-medium text-[#0A0A0A] flex-shrink-0 w-24 text-right">
++                    {formatPrice(order.total)}
++                  </p>
++                </div>
++              ))}
++            </div>
++          )}
++        </Card>
++      </div>
++
++      {/* Payment methods */}
++      {paymentEntries.length > 0 && (
++        <Card className="p-6">
++          <h3 className="font-display text-xl text-[#0A0A0A] mb-6" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++            Méthodes de paiement (commandes payées)
++          </h3>
++          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
++            {paymentEntries.map(({ method, label, count, revenue }) => (
++              <div key={method} className="border border-[#E5E0DA] p-4">
++                <p className="text-xs uppercase tracking-widest text-[#6B6560] mb-2">{label}</p>
++                <p className="font-display text-2xl text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++                  {formatPrice(revenue)}
++                </p>
++                <p className="text-xs text-[#6B6560] mt-1">{count} transaction{count > 1 ? 's' : ''}</p>
++              </div>
++            ))}
++          </div>
++        </Card>
++      )}
++    </div>
++  )
++}
++
++// ──────────────────────────────────────────────────────────────
++// Sous-composants
++// ──────────────────────────────────────────────────────────────
++
++function KpiCard({
++  label,
++  value,
++  sub,
++  icon,
++  accent,
++}: {
++  label: string
++  value: string
++  sub?: string
++  icon: React.ReactNode
++  accent: string
++}) {
++  return (
++    <Card className="p-6 relative overflow-hidden">
++      <div
++        className="absolute top-0 left-0 w-1 h-full"
++        style={{ backgroundColor: accent }}
++      />
++      <div className="flex items-start justify-between mb-3">
++        <p className="text-xs uppercase tracking-widest text-[#6B6560]">{label}</p>
++        <div style={{ color: accent }}>{icon}</div>
++      </div>
++      <p className="font-display text-3xl text-[#0A0A0A] leading-tight" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++        {value}
++      </p>
++      {sub && <p className="text-xs text-[#6B6560] mt-2">{sub}</p>}
++    </Card>
++  )
++}
++
++function MiniStat({
++  label,
++  value,
++  sub,
++  icon,
++}: {
++  label: string
++  value: string
++  sub?: string
++  icon: React.ReactNode
++}) {
++  return (
++    <div className="bg-white p-4 shadow-sm border-l-2 border-[#E5E0DA]">
++      <div className="flex items-center gap-2 text-[#6B6560] mb-1">
++        {icon}
++        <p className="text-xs uppercase tracking-widest">{label}</p>
++      </div>
++      <p className="text-lg font-medium text-[#0A0A0A]">{value}</p>
++      {sub && <p className="text-xs text-[#6B6560]">{sub}</p>}
++    </div>
++  )
++}
++
++function RevenueChart({
++  data,
++  max,
++}: {
++  data: { date: string; revenue: number; orders: number }[]
++  max: number
++}) {
++  const width = 600
++  const height = 200
++  const padding = { top: 10, right: 10, bottom: 30, left: 50 }
++  const chartWidth = width - padding.left - padding.right
++  const chartHeight = height - padding.top - padding.bottom
++  const barWidth = chartWidth / data.length
++
++  return (
++    <div className="w-full overflow-x-auto">
++      <svg
++        viewBox={`0 0 ${width} ${height}`}
++        className="w-full"
++        style={{ minWidth: '500px' }}
++        preserveAspectRatio="xMidYMid meet"
++      >
++        {/* Axe Y — lignes de grille */}
++        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
++          const y = padding.top + chartHeight * (1 - t)
++          const val = Math.round(max * t)
++          return (
++            <g key={t}>
++              <line
++                x1={padding.left}
++                y1={y}
++                x2={width - padding.right}
++                y2={y}
++                stroke="#E5E0DA"
++                strokeWidth={1}
++              />
++              <text
++                x={padding.left - 8}
++                y={y + 4}
++                textAnchor="end"
++                fontSize={10}
++                fill="#6B6560"
++              >
++                {formatCompact(val)}
++              </text>
++            </g>
++          )
++        })}
++
++        {/* Barres */}
++        {data.map((d, i) => {
++          const barHeight = max > 0 ? (d.revenue / max) * chartHeight : 0
++          const x = padding.left + i * barWidth
++          const y = padding.top + chartHeight - barHeight
++          const isToday = i === data.length - 1
++          return (
++            <g key={d.date}>
++              <rect
++                x={x + 1}
++                y={y}
++                width={Math.max(barWidth - 2, 1)}
++                height={barHeight}
++                fill={isToday ? '#9C7C5C' : '#C4A77D'}
++                opacity={d.revenue > 0 ? 1 : 0.2}
++              >
++                <title>{`${d.date}: ${formatPrice(d.revenue)} (${d.orders} cmd)`}</title>
++              </rect>
++              {/* Label tous les ~5 jours */}
++              {i % 5 === 0 && (
++                <text
++                  x={x + barWidth / 2}
++                  y={height - padding.bottom + 16}
++                  textAnchor="middle"
++                  fontSize={9}
++                  fill="#6B6560"
++                >
++                  {new Date(d.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
++                </text>
++              )}
++            </g>
++          )
++        })}
++
++        {/* Axe X */}
++        <line
++          x1={padding.left}
++          y1={padding.top + chartHeight}
++          x2={width - padding.right}
++          y2={padding.top + chartHeight}
++          stroke="#0A0A0A"
++          strokeWidth={1}
++        />
++      </svg>
++    </div>
++  )
++}
+diff --git a/src/components/admin/AdminOrdersTab.tsx b/src/components/admin/AdminOrdersTab.tsx
+new file mode 100644
+index 0000000..1ad38fd
+--- /dev/null
++++ b/src/components/admin/AdminOrdersTab.tsx
+@@ -0,0 +1,215 @@
++'use client'
++
++import { Order, formatPrice } from './types'
++
++interface AdminOrdersTabProps {
++  orders: Order[]
++  orderFilter: string
++  setOrderFilter: (v: string) => void
++  onUpdateOrderStatus: (orderId: string, status: string, trackingNumber?: string) => void
++  onDeleteOrder: (orderId: string, orderNumber: string) => void
++  getWhatsAppLink: (message: string) => string
++}
++
++const STATUS_LABELS: Record<string, string> = {
++  pending: 'En attente',
++  paid: 'Payée',
++  processing: 'En préparation',
++  shipped: 'Expédiée',
++  delivered: 'Livrée',
++  cancelled: 'Annulée',
++}
++
++const STATUS_BADGE: Record<string, string> = {
++  pending: 'bg-yellow-100 text-yellow-800',
++  paid: 'bg-blue-100 text-blue-800',
++  processing: 'bg-indigo-100 text-indigo-800',
++  shipped: 'bg-purple-100 text-purple-800',
++  delivered: 'bg-[#15803D]/10 text-[#15803D]',
++  cancelled: 'bg-red-100 text-red-800',
++}
++
++const PAYMENT_BADGE: Record<string, string> = {
++  paid: 'bg-[#15803D]/10 text-[#15803D]',
++  pending: 'bg-yellow-100 text-yellow-800',
++}
++
++const FILTERS = [
++  { id: 'all', label: 'Toutes' },
++  { id: 'pending', label: 'En attente' },
++  { id: 'paid', label: 'Payées' },
++  { id: 'processing', label: 'En préparation' },
++  { id: 'shipped', label: 'Expédiées' },
++  { id: 'delivered', label: 'Livrées' },
++]
++
++export function AdminOrdersTab({
++  orders,
++  orderFilter,
++  setOrderFilter,
++  onUpdateOrderStatus,
++  onDeleteOrder,
++  getWhatsAppLink,
++}: AdminOrdersTabProps) {
++  const filteredOrders = orders.filter(
++    (o) => orderFilter === 'all' || o.status === orderFilter
++  )
++
++  return (
++    <div className="space-y-6">
++      {/* Order Filters */}
++      <div className="flex flex-wrap gap-3 mb-6">
++        {FILTERS.map((filter) => (
++          <button
++            key={filter.id}
++            onClick={() => setOrderFilter(filter.id)}
++            className={`px-4 py-2 text-sm uppercase tracking-wider transition-colors ${
++              orderFilter === filter.id
++                ? 'bg-[#9C7C5C] text-white'
++                : 'bg-white text-[#0A0A0A] border border-[#E5E0DA] hover:border-[#9C7C5C]'
++            }`}
++          >
++            {filter.label}
++          </button>
++        ))}
++      </div>
++
++      {/* Orders List */}
++      {filteredOrders.length === 0 ? (
++        <div className="bg-white p-12 text-center">
++          <p className="text-[#6B6560]">Aucune commande à afficher</p>
++        </div>
++      ) : (
++        <div className="space-y-4">
++          {filteredOrders.map((order) => (
++            <div key={order.id} className="bg-white p-6 shadow-sm">
++              <div className="flex flex-col lg:flex-row justify-between gap-4">
++                <div className="flex-1">
++                  <div className="flex items-center gap-4 mb-3 flex-wrap">
++                    <h3 className="font-medium text-lg">{order.orderNumber}</h3>
++                    <span
++                      className={`inline-block px-3 py-1 text-xs uppercase tracking-wider ${
++                        STATUS_BADGE[order.status] || 'bg-red-100 text-red-800'
++                      }`}
++                    >
++                      {STATUS_LABELS[order.status] || order.status}
++                    </span>
++                    <span
++                      className={`inline-block px-3 py-1 text-xs uppercase tracking-wider ${
++                        PAYMENT_BADGE[order.paymentStatus] || 'bg-red-100 text-red-800'
++                      }`}
++                    >
++                      {order.paymentStatus === 'paid'
++                        ? 'Payé'
++                        : order.paymentStatus === 'pending'
++                        ? 'Paiement en attente'
++                        : order.paymentStatus}
++                    </span>
++                  </div>
++
++                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
++                    <div>
++                      <p className="text-[#6B6560]">Client:</p>
++                      <p>
++                        {order.customerFirstName} {order.customerLastName}
++                      </p>
++                      <p className="text-[#6B6560]">{order.customerEmail}</p>
++                      <p className="text-[#6B6560]">{order.customerPhone}</p>
++                    </div>
++                    <div>
++                      <p className="text-[#6B6560]">Livraison:</p>
++                      <p>{order.shippingAddress || 'Non spécifiée'}</p>
++                      <p>
++                        {order.shippingCity || ''} {order.shippingCountry || ''}
++                      </p>
++                    </div>
++                  </div>
++
++                  <div className="mt-4 pt-4 border-t border-[#E5E0DA]">
++                    <p className="text-[#6B6560] text-xs uppercase tracking-wider mb-2">
++                      Articles:
++                    </p>
++                    {order.items.map((item, idx) => (
++                      <div key={idx} className="flex justify-between text-sm py-1">
++                        <span>
++                          {item.productName} - {item.size}
++                          {item.colorName ? `, ${item.colorName}` : ''} x{item.quantity}
++                        </span>
++                        <span>{formatPrice(item.totalPrice)}</span>
++                      </div>
++                    ))}
++                    <div className="flex justify-between font-medium mt-2 pt-2 border-t border-[#E5E0DA]">
++                      <span>Total</span>
++                      <span>{formatPrice(order.total)}</span>
++                    </div>
++                  </div>
++
++                  {order.trackingNumber && (
++                    <div className="mt-4 p-3 bg-[#EDE8E1] text-sm">
++                      <p>
++                        <strong>Numéro de suivi:</strong> {order.trackingNumber}
++                      </p>
++                    </div>
++                  )}
++
++                  <p className="text-xs text-[#6B6560] mt-4">
++                    Créée le{' '}
++                    {new Date(order.createdAt).toLocaleDateString('fr-FR')} à{' '}
++                    {new Date(order.createdAt).toLocaleTimeString('fr-FR')}
++                  </p>
++                </div>
++
++                {/* Actions */}
++                <div className="flex flex-col gap-2 lg:w-48">
++                  <select
++                    value={order.status}
++                    onChange={(e) => onUpdateOrderStatus(order.id, e.target.value)}
++                    className="p-2 border border-[#E5E0DA] text-sm"
++                  >
++                    <option value="pending">En attente</option>
++                    <option value="paid">Payée</option>
++                    <option value="processing">En préparation</option>
++                    <option value="shipped">Expédiée</option>
++                    <option value="delivered">Livrée</option>
++                    <option value="cancelled">Annulée</option>
++                  </select>
++
++                  {order.status === 'shipped' && !order.trackingNumber && (
++                    <input
++                      type="text"
++                      placeholder="Numéro de suivi"
++                      className="p-2 border border-[#E5E0DA] text-sm"
++                      onBlur={(e) => {
++                        if (e.target.value) {
++                          onUpdateOrderStatus(order.id, order.status, e.target.value)
++                        }
++                      }}
++                    />
++                  )}
++
++                  <button
++                    onClick={() => onDeleteOrder(order.id, order.orderNumber)}
++                    className="bg-red-500 text-white text-center py-2 text-xs uppercase tracking-wider hover:bg-red-600 transition-colors"
++                  >
++                    Supprimer
++                  </button>
++
++                  <a
++                    href={getWhatsAppLink(
++                      `Bonjour, concernant votre commande ${order.orderNumber}...`
++                    )}
++                    target="_blank"
++                    rel="noopener"
++                    className="bg-[#9C7C5C] text-white text-center py-2 text-xs uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors"
++                  >
++                    Contacter client
++                  </a>
++                </div>
++              </div>
++            </div>
++          ))}
++        </div>
++      )}
++    </div>
++  )
++}
+diff --git a/src/components/admin/AdminUsersTab.tsx b/src/components/admin/AdminUsersTab.tsx
+new file mode 100644
+index 0000000..def17cf
+--- /dev/null
++++ b/src/components/admin/AdminUsersTab.tsx
+@@ -0,0 +1,269 @@
++'use client'
++
++import { User, NewUserData } from './types'
++
++interface AdminUsersTabProps {
++  users: User[]
++  showUserForm: boolean
++  setShowUserForm: (v: boolean) => void
++  editingUser: User | null
++  setEditingUser: (u: User | null) => void
++  newUserData: NewUserData
++  setNewUserData: (d: NewUserData) => void
++  onCreateUser: () => void
++  onUpdateUser: (userId: string, updates: { role?: string; isActive?: boolean; firstName?: string; lastName?: string; phone?: string }) => void
++  onDeleteUser: (userId: string) => void
++}
++
++const ROLE_BADGE: Record<string, string> = {
++  admin: 'bg-purple-100 text-purple-800',
++  manager: 'bg-blue-100 text-blue-800',
++  customer: 'bg-gray-100 text-gray-800',
++}
++
++const ROLE_LABEL: Record<string, string> = {
++  admin: 'Admin',
++  manager: 'Manager',
++  customer: 'Client',
++}
++
++export function AdminUsersTab({
++  users,
++  showUserForm,
++  setShowUserForm,
++  editingUser,
++  setEditingUser,
++  newUserData,
++  setNewUserData,
++  onCreateUser,
++  onUpdateUser,
++  onDeleteUser,
++}: AdminUsersTabProps) {
++  return (
++    <div className="space-y-6">
++      <div className="flex justify-between items-center">
++        <h3 className="font-display text-lg text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
++          Gestion des utilisateurs
++        </h3>
++        <button
++          onClick={() => {
++            setEditingUser(null)
++            setNewUserData({
++              email: '',
++              password: '',
++              firstName: '',
++              lastName: '',
++              phone: '',
++              role: 'customer',
++            })
++            setShowUserForm(true)
++          }}
++          className="px-4 py-2 bg-[#0A0A0A] text-[#F8F6F3] text-sm uppercase tracking-wider hover:bg-[#9C7C5C] transition-colors"
++        >
++          + Nouvel utilisateur
++        </button>
++      </div>
++
++      {/* User Form Modal */}
++      {showUserForm && (
++        <div className="bg-white p-6 shadow-sm mb-6">
++          <h4 className="font-medium mb-4">
++            {editingUser ? "Modifier l'utilisateur" : 'Créer un nouvel utilisateur'}
++          </h4>
++          <div className="grid md:grid-cols-2 gap-4">
++            <div>
++              <label className="block text-xs text-[#6B6560] mb-1">Email *</label>
++              <input
++                type="email"
++                value={editingUser ? editingUser.email : newUserData.email}
++                onChange={(e) =>
++                  !editingUser && setNewUserData({ ...newUserData, email: e.target.value })
++                }
++                disabled={!!editingUser}
++                className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C] disabled:bg-[#EDE8E1]"
++              />
++            </div>
++            {!editingUser && (
++              <div>
++                <label className="block text-xs text-[#6B6560] mb-1">Mot de passe *</label>
++                <input
++                  type="password"
++                  value={newUserData.password}
++                  onChange={(e) =>
++                    setNewUserData({ ...newUserData, password: e.target.value })
++                  }
++                  className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
++                />
++              </div>
++            )}
++            <div>
++              <label className="block text-xs text-[#6B6560] mb-1">Prénom</label>
++              <input
++                type="text"
++                value={editingUser ? editingUser.firstName || '' : newUserData.firstName}
++                onChange={(e) =>
++                  editingUser
++                    ? setEditingUser({ ...editingUser, firstName: e.target.value })
++                    : setNewUserData({ ...newUserData, firstName: e.target.value })
++                }
++                className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
++              />
++            </div>
++            <div>
++              <label className="block text-xs text-[#6B6560] mb-1">Nom</label>
++              <input
++                type="text"
++                value={editingUser ? editingUser.lastName || '' : newUserData.lastName}
++                onChange={(e) =>
++                  editingUser
++                    ? setEditingUser({ ...editingUser, lastName: e.target.value })
++                    : setNewUserData({ ...newUserData, lastName: e.target.value })
++                }
++                className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
++              />
++            </div>
++            <div>
++              <label className="block text-xs text-[#6B6560] mb-1">Téléphone</label>
++              <input
++                type="tel"
++                value={editingUser ? editingUser.phone || '' : newUserData.phone}
++                onChange={(e) =>
++                  editingUser
++                    ? setEditingUser({ ...editingUser, phone: e.target.value })
++                    : setNewUserData({ ...newUserData, phone: e.target.value })
++                }
++                className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
++              />
++            </div>
++            <div>
++              <label className="block text-xs text-[#6B6560] mb-1">Rôle</label>
++              <select
++                value={editingUser ? editingUser.role : newUserData.role}
++                onChange={(e) =>
++                  editingUser
++                    ? setEditingUser({ ...editingUser, role: e.target.value })
++                    : setNewUserData({ ...newUserData, role: e.target.value })
++                }
++                className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
++              >
++                <option value="customer">Client</option>
++                <option value="manager">Manager / Gestionnaire</option>
++                <option value="admin">Administrateur</option>
++              </select>
++            </div>
++          </div>
++          <div className="flex gap-3 mt-6">
++            <button
++              onClick={() =>
++                editingUser
++                  ? onUpdateUser(editingUser.id, editingUser)
++                  : onCreateUser()
++              }
++              className="px-6 py-2 bg-[#9C7C5C] text-white text-sm uppercase tracking-wider hover:bg-[#8B6B4B] transition-colors"
++            >
++              {editingUser ? 'Enregistrer' : 'Créer'}
++            </button>
++            <button
++              onClick={() => {
++                setShowUserForm(false)
++                setEditingUser(null)
++              }}
++              className="px-6 py-2 border border-[#E5E0DA] text-[#0A0A0A] text-sm uppercase tracking-wider hover:border-[#9C7C5C] transition-colors"
++            >
++              Annuler
++            </button>
++          </div>
++        </div>
++      )}
++
++      {/* Users List */}
++      <div className="bg-white shadow-sm overflow-hidden">
++        <div className="overflow-x-auto">
++          <table className="w-full">
++            <thead>
++              <tr className="bg-[#EDE8E1]">
++                <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Email</th>
++                <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Nom</th>
++                <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Téléphone</th>
++                <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Rôle</th>
++                <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Statut</th>
++                <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Commandes</th>
++                <th className="text-left p-4 text-xs uppercase tracking-widest text-[#0A0A0A]">Actions</th>
++              </tr>
++            </thead>
++            <tbody>
++              {users.map((u) => (
++                <tr key={u.id} className="border-b border-[#E5E0DA] hover:bg-gray-50">
++                  <td className="p-4">
++                    <p className="font-medium text-[#0A0A0A]">{u.email}</p>
++                  </td>
++                  <td className="p-4">
++                    <p className="text-[#0A0A0A]">
++                      {u.firstName} {u.lastName}
++                    </p>
++                  </td>
++                  <td className="p-4">
++                    <p className="text-[#6B6560]">{u.phone || '-'}</p>
++                  </td>
++                  <td className="p-4">
++                    <span
++                      className={`inline-block px-2 py-1 rounded text-xs font-bold ${
++                        ROLE_BADGE[u.role] || 'bg-gray-100 text-gray-800'
++                      }`}
++                    >
++                      {ROLE_LABEL[u.role] || u.role}
++                    </span>
++                  </td>
++                  <td className="p-4">
++                    <span
++                      className={`inline-block px-2 py-1 rounded text-xs font-bold ${
++                        u.isActive
++                          ? 'bg-[#15803D]/10 text-[#15803D]'
++                          : 'bg-red-100 text-red-800'
++                      }`}
++                    >
++                      {u.isActive ? 'Actif' : 'Inactif'}
++                    </span>
++                  </td>
++                  <td className="p-4">
++                    <p className="text-[#6B6560]">
++                      {(u as { _count?: { orders: number } })._count?.orders || 0}
++                    </p>
++                  </td>
++                  <td className="p-4 whitespace-nowrap">
++                    <button
++                      onClick={() => {
++                        setEditingUser(u)
++                        setShowUserForm(true)
++                      }}
++                      className="text-[#9C7C5C] hover:text-[#0A0A0A] text-xs uppercase font-bold mr-3"
++                    >
++                      Modifier
++                    </button>
++                    <button
++                      onClick={() => onUpdateUser(u.id, { isActive: !u.isActive })}
++                      className="text-[#6B6560] hover:text-[#0A0A0A] text-xs uppercase font-bold mr-3"
++                    >
++                      {u.isActive ? 'Désactiver' : 'Activer'}
++                    </button>
++                    <button
++                      onClick={() => onDeleteUser(u.id)}
++                      className="text-red-600 hover:text-red-800 text-xs uppercase font-bold"
++                    >
++                      Supprimer
++                    </button>
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++        {users.length === 0 && (
++          <div className="p-12 text-center text-[#6B6560]">
++            Aucun utilisateur dans la base de données.
++          </div>
++        )}
++      </div>
++    </div>
++  )
++}
+diff --git a/src/components/admin/types.ts b/src/components/admin/types.ts
+new file mode 100644
+index 0000000..325d453
+--- /dev/null
++++ b/src/components/admin/types.ts
+@@ -0,0 +1,76 @@
++// Shared types for admin components — extracted from src/app/page.tsx
++// This avoids circular imports and keeps admin components decoupled
++// from the monolithic page.tsx.
++
++export interface OrderItem {
++  id: string
++  productName: string
++  productImage: string | null
++  colorName: string | null
++  size: string
++  quantity: number
++  unitPrice: number
++  totalPrice: number
++}
++
++export interface Payment {
++  id: string
++  amount: number
++  status: string
++  paymentMethod: string | null
++  transactionId: string | null
++  createdAt: string
++}
++
++export interface Order {
++  id: string
++  orderNumber: string
++  customerEmail: string
++  customerPhone: string
++  customerFirstName: string | null
++  customerLastName: string | null
++  shippingAddress: string | null
++  shippingCity: string | null
++  shippingCountry: string | null
++  subtotal: number
++  shippingCost: number
++  total: number
++  status: string
++  paymentStatus: string
++  paymentMethod: string | null
++  trackingNumber: string | null
++  notes: string | null
++  estimatedDelivery: string | null
++  createdAt: string
++  items: OrderItem[]
++  payments?: Payment[]
++}
++
++export interface User {
++  id: string
++  email: string
++  firstName: string | null
++  lastName: string | null
++  phone: string | null
++  role: string
++  isActive?: boolean
++  createdAt?: string
++  // Prisma _count aggregate (returned by /api/admin/users)
++  _count?: { orders: number }
++}
++
++export interface NewUserData {
++  email: string
++  password: string
++  firstName: string
++  lastName: string
++  phone: string
++  role: string
++}
++
++export const formatPrice = (price: number | undefined | null) => {
++  if (price === undefined || price === null || isNaN(price)) {
++    return 'Prix sur demande'
++  }
++  return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' XOF'
++}
