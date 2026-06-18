@@ -50,3 +50,8 @@ prompt
 server.log
 # Skills directory
 /skills/
+# Database (ne jamais committer)
+db/
+prisma/db/
+*.db
+*.db-journal
