@@ -1,12 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+/**
+ * Defense in depth: the middleware already validated the JWT and checked
+ * the role, but we re-verify against the DB here in case:
+ *  - the user was deactivated after the JWT was issued
+ *  - the user's role was changed after the JWT was issued
+ */
+async function authorize(request: NextRequest) {
+  const userId = request.headers.get('x-auth-user-id')
+  const role = request.headers.get('x-auth-role')
+  if (!userId || !role) return null
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, isActive: true },
+  })
+  if (!user || !user.isActive) return null
+  if (user.role !== role) return null
+  if (user.role !== 'admin' && user.role !== 'manager') return null
+  return user
+}
+
 // GET - Get all orders (admin)
 export async function GET(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
-
-    if (!isAdmin) {
+    const authUser = await authorize(request)
+    if (!authUser) {
       return NextResponse.json(
         { error: 'Accès non autorisé' },
         { status: 403 }
@@ -91,9 +110,8 @@ export async function GET(request: NextRequest) {
 // PUT - Update order (admin)
 export async function PUT(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
-
-    if (!isAdmin) {
+    const authUser = await authorize(request)
+    if (!authUser) {
       return NextResponse.json(
         { error: 'Accès non autorisé' },
         { status: 403 }
@@ -142,9 +160,8 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete order (admin only)
 export async function DELETE(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
-
-    if (!isAdmin) {
+    const authUser = await authorize(request)
+    if (!authUser) {
       return NextResponse.json(
         { error: 'Accès non autorisé' },
         { status: 403 }

@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 // GET - List addresses
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
 
     if (!userId) {
       return NextResponse.json(
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 // POST - Create address
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
 
     if (!userId) {
       return NextResponse.json(
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 // PUT - Update address
 export async function PUT(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
 
     if (!userId) {
       return NextResponse.json(
@@ -152,7 +152,7 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete address
 export async function DELETE(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 

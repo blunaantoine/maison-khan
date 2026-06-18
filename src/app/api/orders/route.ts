@@ -18,8 +18,9 @@ const generateOrderNumber = async () => {
 // GET - Get orders
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
+    const userId = request.headers.get('x-auth-user-id')
+    const role = request.headers.get('x-auth-role')
+    const isAdmin = role === 'admin' || role === 'manager'
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const orderId = searchParams.get('id')
@@ -236,7 +237,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
     const validUserId = userId && userId !== '' ? userId : null  // <-- AJOUTEZ CETTE LIGNE
     
     const body = await request.json()
@@ -327,7 +328,8 @@ export async function POST(request: NextRequest) {
 // PUT - Update order (admin or status update)
 export async function PUT(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
+    const role = request.headers.get('x-auth-role')
+    const isAdmin = role === 'admin' || role === 'manager'
     const body = await request.json()
     const { id, status, paymentStatus, trackingNumber, notes, estimatedDelivery } = body
 

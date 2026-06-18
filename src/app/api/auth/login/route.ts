@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { signSession, buildSessionCookie } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,13 +45,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Sign JWT and set HttpOnly cookie
+    const token = await signSession({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    })
+
     // Return user (without password)
     const { password: _, ...userWithoutPassword } = user
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: 'Connexion réussie',
       user: userWithoutPassword
     })
+    response.headers.set('Set-Cookie', buildSessionCookie(token))
+    return response
   } catch (error) {
     console.error('Login error:', error)
     return NextResponse.json(

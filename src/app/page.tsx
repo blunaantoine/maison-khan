@@ -373,9 +373,9 @@ useImperativeHandle(ref, () => ({
                   const orderRes = await fetch('/api/orders', {
                     method: 'POST',
                     headers: { 
-                      'Content-Type': 'application/json', 
-                      'x-user-id': user?.id || '' 
+                      'Content-Type': 'application/json'
                     },
+                    credentials: 'include',
                     body: JSON.stringify(orderData)
                   })
 
@@ -1141,33 +1141,48 @@ export default function Home() {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('user')
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch {
+      // ignore — cookie will be cleared server-side anyway on next request
+    }
     setUser(null)
     setShowUserDashboard(false)
+    if (currentSection === 'admin' || currentSection === 'account') {
+      setCurrentSection('home')
+    }
     showToast('Déconnexion', 'À bientôt !')
   }
 
-  // Load user from localStorage
+  // Load user from session cookie (JWT HttpOnly) — no more localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
-    try {
-      const savedUser = localStorage.getItem('user')
-      if (savedUser) {
-        setUser(JSON.parse(savedUser))
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          if (!cancelled && data.user) {
+            setUser(data.user)
+          }
+        } else {
+          // Not authenticated — clear any stale localStorage from old version
+          localStorage.removeItem('user')
+        }
+      } catch {
+        // Network error — ignore
       }
-    } catch {
-      // Ignore errors
-    }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   // Fetch user orders
   const fetchUserOrders = async () => {
     if (!user) return
     try {
-      const res = await fetch('/api/orders', {
-        headers: { 'x-user-id': user.id }
-      })
+      const res = await fetch('/api/orders', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         setUserOrders(data.orders || [])
@@ -1181,9 +1196,7 @@ export default function Home() {
   const fetchUserAddresses = async () => {
     if (!user) return
     try {
-      const res = await fetch('/api/addresses', {
-        headers: { 'x-user-id': user.id }
-      })
+      const res = await fetch('/api/addresses', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         setUserAddresses(data.addresses || [])
@@ -1203,12 +1216,7 @@ export default function Home() {
   // Fetch admin orders
   const fetchAdminOrders = async () => {
     try {
-      const res = await fetch('/api/admin/orders', {
-        headers: { 
-          'x-user-id': user?.id || '',
-          'x-is-admin': 'true'
-        }
-      })
+      const res = await fetch('/api/admin/orders', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         setAdminOrders(data.orders || [])
@@ -1232,11 +1240,8 @@ export default function Home() {
     try {
       const res = await fetch('/api/admin/orders', {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-user-id': user?.id || '',
-          'x-is-admin': 'true'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ id: orderId, status, trackingNumber })
       })
       if (res.ok) {
@@ -1256,10 +1261,7 @@ export default function Home() {
     try {
       const res = await fetch(`/api/admin/orders?id=${orderId}`, {
         method: 'DELETE',
-        headers: { 
-          'x-user-id': user?.id || '',
-          'x-is-admin': 'true'
-        }
+        credentials: 'include'
       })
       if (res.ok) {
         fetchAdminOrders()
@@ -1275,11 +1277,7 @@ export default function Home() {
   // Fetch admin users (admin only)
   const fetchAdminUsers = async () => {
     try {
-      const res = await fetch('/api/admin/users', {
-        headers: { 
-          'x-user-id': user?.id || ''
-        }
-      })
+      const res = await fetch('/api/admin/users', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         setAdminUsers(data.users || [])
@@ -1307,10 +1305,8 @@ export default function Home() {
     try {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-user-id': user.id
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(newUserData)
       })
       if (res.ok) {
@@ -1334,10 +1330,8 @@ export default function Home() {
     try {
       const res = await fetch('/api/admin/users', {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-user-id': user?.id || ''
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ id: userId, ...updates })
       })
       if (res.ok) {
@@ -1357,7 +1351,7 @@ export default function Home() {
     try {
       const res = await fetch(`/api/admin/users?id=${userId}`, { 
         method: 'DELETE',
-        headers: { 'x-user-id': user?.id || '' }
+        credentials: 'include'
       })
       if (res.ok) {
         fetchAdminUsers()
@@ -1468,7 +1462,8 @@ export default function Home() {
       // Create order
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           items: items.map(item => ({
             productId: item.id,
@@ -1856,11 +1851,13 @@ export default function Home() {
           const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ email: data.email, password: data.password })
           })
           const resData = await res.json()
           if (res.ok) {
-            localStorage.setItem('user', JSON.stringify(resData.user))
+            // Session is stored in an HttpOnly cookie set by the server.
+            // We only keep the public user object in React state.
             setUser(resData.user)
             setShowAuthModal(false)
             showToast('Bienvenue', `Connexion réussie`)
@@ -1875,11 +1872,11 @@ export default function Home() {
           const res = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(data)
           })
           const resData = await res.json()
           if (res.ok) {
-            localStorage.setItem('user', JSON.stringify(resData.user))
             setUser(resData.user)
             setShowAuthModal(false)
             showToast('Bienvenue', 'Compte créé avec succès')
@@ -2931,7 +2928,7 @@ export default function Home() {
                                   onClick={async () => {
                                     try {
                                       const res = await fetch('/api/orders', {
-                                        headers: { 'x-user-id': user?.id || '' }
+                                        credentials: 'include'
                                       })
                                       if (res.ok) {
                                         const data = await res.json()

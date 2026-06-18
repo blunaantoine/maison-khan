@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 // GET - Get cart
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
     const sessionId = request.headers.get('x-session-id')
 
     const where = userId ? { userId } : { sessionId }
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 // POST - Add to cart
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
     const sessionId = request.headers.get('x-session-id')
     
     const body = await request.json()
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 // PUT - Update cart item
 export async function PUT(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
     const sessionId = request.headers.get('x-session-id')
     
     const body = await request.json()
@@ -165,7 +165,7 @@ export async function PUT(request: NextRequest) {
 // DELETE - Remove from cart
 export async function DELETE(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const userId = request.headers.get('x-auth-user-id')
     const sessionId = request.headers.get('x-session-id')
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

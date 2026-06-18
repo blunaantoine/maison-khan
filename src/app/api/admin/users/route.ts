@@ -2,17 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 
-// GET - List all users
+/**
+ * Defense in depth: middleware already verified JWT and required admin role,
+ * but we re-check against DB to handle role changes / deactivations that
+ * happened after the JWT was issued.
+ */
+async function authorizeAdmin(request: NextRequest) {
+  const authUserId = request.headers.get('x-auth-user-id')
+  const authRole = request.headers.get('x-auth-role')
+  if (!authUserId || !authRole) return null
+
+  const user = await db.user.findUnique({
+    where: { id: authUserId },
+    select: { id: true, role: true, isActive: true },
+  })
+
+  if (!user || !user.isActive) return null
+  if (user.role !== authRole) return null
+  if (user.role !== 'admin') return null
+  return user
+}
+
+// GET - List all users (admin only)
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
-    
-    // Check if admin
-    const user = await db.user.findUnique({
-      where: { id: userId || '' }
-    })
-    
-    if (!user || user.role !== 'admin') {
+    const admin = await authorizeAdmin(request)
+    if (!admin) {
       return NextResponse.json(
         { error: 'Non autorisé' },
         { status: 403 }
@@ -46,21 +61,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new user
+// POST - Create new user (admin only)
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
-    console.log('POST /api/admin/users - userId:', userId)
-    
-    // Check if admin
-    const adminUser = await db.user.findUnique({
-      where: { id: userId || '' }
-    })
-    
-    console.log('Admin user found:', adminUser ? { id: adminUser.id, email: adminUser.email, role: adminUser.role } : null)
-    
-    if (!adminUser || adminUser.role !== 'admin') {
-      console.log('Access denied - user role:', adminUser?.role)
+    const admin = await authorizeAdmin(request)
+    if (!admin) {
       return NextResponse.json(
         { error: 'Non autorisé - vous devez être admin' },
         { status: 403 }
@@ -69,12 +74,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { email, password, firstName, lastName, phone, role } = body
-    
-    console.log('Creating user:', { email, firstName, lastName, role })
 
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email et mot de passe requis' },
+        { status: 400 }
+      )
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'Le mot de passe doit contenir au moins 6 caractères' },
         { status: 400 }
       )
     }
@@ -130,17 +140,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Update user
+// PUT - Update user (admin only)
 export async function PUT(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
-    
-    // Check if admin
-    const adminUser = await db.user.findUnique({
-      where: { id: userId || '' }
-    })
-    
-    if (!adminUser || adminUser.role !== 'admin') {
+    const admin = await authorizeAdmin(request)
+    if (!admin) {
       return NextResponse.json(
         { error: 'Non autorisé' },
         { status: 403 }
@@ -157,6 +161,14 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // Prevent an admin from demoting themselves (lockout protection)
+    if (id === admin.id && role && role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez pas rétrograder votre propre compte admin' },
+        { status: 400 }
+      )
+    }
+
     const updateData: Record<string, unknown> = {}
     if (role) updateData.role = role
     if (isActive !== undefined) updateData.isActive = isActive
@@ -164,6 +176,12 @@ export async function PUT(request: NextRequest) {
     if (lastName !== undefined) updateData.lastName = lastName
     if (phone !== undefined) updateData.phone = phone
     if (password) {
+      if (password.length < 6) {
+        return NextResponse.json(
+          { error: 'Le mot de passe doit contenir au moins 6 caractères' },
+          { status: 400 }
+        )
+      }
       updateData.password = await bcrypt.hash(password, 10)
     }
 
@@ -195,24 +213,19 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Delete user
+// DELETE - Delete user (admin only)
 export async function DELETE(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    
-    // Check if admin
-    const adminUser = await db.user.findUnique({
-      where: { id: userId || '' }
-    })
-    
-    if (!adminUser || adminUser.role !== 'admin') {
+    const admin = await authorizeAdmin(request)
+    if (!admin) {
       return NextResponse.json(
         { error: 'Non autorisé' },
         { status: 403 }
       )
     }
+
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
 
     if (!id) {
       return NextResponse.json(
@@ -222,7 +235,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Prevent deleting yourself
-    if (id === userId) {
+    if (id === admin.id) {
       return NextResponse.json(
         { error: 'Vous ne pouvez pas supprimer votre propre compte' },
         { status: 400 }

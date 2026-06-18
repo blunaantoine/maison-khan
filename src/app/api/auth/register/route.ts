@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { signSession, buildSessionCookie } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,10 +60,19 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({
+    // Sign JWT and set HttpOnly cookie (auto-login after register)
+    const token = await signSession({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    })
+
+    const response = NextResponse.json({
       message: 'Compte créé avec succès',
       user
     })
+    response.headers.set('Set-Cookie', buildSessionCookie(token))
+    return response
   } catch (error) {
     console.error('Register error:', error)
     return NextResponse.json(
