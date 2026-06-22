@@ -989,6 +989,8 @@ const compressImage = (file: File, maxWidth: number = 1200, quality: number = 0.
 }
 
 export default function Home() {
+  // Router pour la navigation vers les pages produit individuelles
+  const router = useRouter()
   // State
   const [currentSection, setCurrentSection] = useState('home')
   const [products, setProducts] = useState<Product[]>([])
@@ -2088,17 +2090,13 @@ export default function Home() {
     const stockClass = product.totalStock === 0 ? 'text-red-600' : product.totalStock <= 5 ? 'text-orange-600' : 'text-[#15803D]'
     const stockLabel = product.totalStock === 0 ? 'Rupture de stock' : product.totalStock <= 5 ? `Stock limité (${product.totalStock})` : 'En stock'
     const genreLabel = product.genre === 'homme' ? 'Homme' : product.genre === 'femme' ? 'Femme' : 'Mixte'
-    const firstColor = product.colors?.[0]?.colorValue || null
     
     return (
       <article 
         className="product-card aspect-[3/4] cursor-pointer"
         style={{ transitionDelay: `${(index % 4) * 0.1}s` }}
         onClick={() => {
-          setCurrentProduct(product)
-          setSelectedSize(product.sizes[0] || null)
-          setSelectedColorValue(firstColor)
-          setShowProductModal(true)
+          router.push(`/produit/${product.id}`)
         }}
       >
         <img src={product.image} alt={product.name} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x500?text=Image' }} />
