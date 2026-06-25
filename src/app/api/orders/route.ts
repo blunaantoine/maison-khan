@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// Generate order number
 const generateOrderNumber = async () => {
   const year = new Date().getFullYear()
   const count = await db.order.count({
@@ -15,7 +14,6 @@ const generateOrderNumber = async () => {
   return `MK-${year}-${String(count + 1).padStart(4, '0')}`
 }
 
-// GET - Get orders
 export async function GET(request: NextRequest) {
   try {
     const userId = request.headers.get('x-user-id')
@@ -24,51 +22,33 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const orderId = searchParams.get('id')
 
-    // Get single order
     if (orderId) {
       const order = await db.order.findUnique({
         where: { id: orderId },
         include: {
           items: {
             include: {
-              product: {
-                select: { id: true, name: true, image: true }
-              }
+              product: { select: { id: true, name: true, image: true } }
             }
           },
           payments: true
         }
       })
-
       if (!order) {
-        return NextResponse.json(
-          { error: 'Commande non trouvée' },
-          { status: 404 }
-        )
+        return NextResponse.json({ error: 'Commande non trouvée' }, { status: 404 })
       }
-
-      // Check ownership (unless admin)
       if (!isAdmin && order.userId !== userId && order.userId !== null) {
-        return NextResponse.json(
-          { error: 'Non autorisé' },
-          { status: 403 }
-        )
+        return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
       }
-
       return NextResponse.json({ order })
     }
 
-    // List orders
     let where: Record<string, unknown> = {}
-    
     if (!isAdmin && userId) {
-      // Trouver l'email de l'utilisateur connecté
       const currentUser = await db.user.findUnique({
         where: { id: userId },
         select: { email: true }
       })
-      
-      // Afficher les commandes liées AU COMPTE ou passées avec LE MÊME EMAIL (sans compte)
       if (currentUser?.email) {
         where = {
           OR: [
@@ -80,28 +60,20 @@ export async function GET(request: NextRequest) {
         where.userId = userId
       }
     }
-    
-    if (status) {
-      where.status = status
-    }
+    if (status) where.status = status
 
     const orders = await db.order.findMany({
       where,
       include: {
         items: {
           include: {
-            product: {
-              select: { id: true, name: true, image: true }
-            }
+            product: { select: { id: true, name: true, image: true } }
           }
         },
         payments: {
           select: {
-            id: true,
-            amount: true,
-            status: true,
-            paymentMethod: true,
-            createdAt: true
+            id: true, amount: true, status: true,
+            paymentMethod: true, createdAt: true
           }
         }
       },
@@ -109,15 +81,11 @@ export async function GET(request: NextRequest) {
       take: 50
     })
 
-    // Relier automatiquement les commandes orphelines (sans userId) au compte du client
     if (!isAdmin && userId) {
       const orphanOrders = orders.filter(o => !o.userId)
       if (orphanOrders.length > 0) {
         await db.order.updateMany({
-          where: {
-            id: { in: orphanOrders.map(o => o.id) },
-            userId: null
-          },
+          where: { id: { in: orphanOrders.map(o => o.id) }, userId: null },
           data: { userId: userId }
         })
       }
@@ -126,152 +94,73 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ orders })
   } catch (error) {
     console.error('Get orders error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la récupération des commandes' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur lors de la récupération des commandes' }, { status: 500 })
   }
 }
-
-// POST - Create order
-// export async function POST(request: NextRequest) {
-//   try {
-//     const userId = request.headers.get('x-user-id')
-//     const validUserId = userId && userId !== '' ? userId : null
-//     const body = await request.json()
-
-//     console.log('Données reçues:', JSON.stringify(body, null, 2))
-
-//     const { 
-//       items, 
-//       customerInfo, 
-//       shippingAddress, 
-//       paymentMethod,
-//       subtotal,
-//       shippingCost,
-//       total
-//     } = body
-
-//     if (!items || items.length === 0) {
-//       return NextResponse.json(
-//         { error: 'Le panier est vide' },
-//         { status: 400 }
-//       )
-//     }
-
-//     if (!customerInfo?.email || !customerInfo?.phone) {
-//       return NextResponse.json(
-//         { error: 'Informations de contact requises' },
-//         { status: 400 }
-//       )
-//     }
-
-//     // Generate order number
-//     const orderNumber = await generateOrderNumber()
-
-//     // Create order
-//     const order = await db.order.create({
-//       data: {
-//         orderNumber,
-//         userId: validUserId || null,
-//         customerEmail: customerInfo.email,
-//         customerPhone: customerInfo.phone,
-//         customerFirstName: customerInfo.firstName || null,
-//         customerLastName: customerInfo.lastName || null,
-//         shippingAddress: shippingAddress?.address || null,
-//         shippingCity: shippingAddress?.city || null,
-//         shippingCountry: shippingAddress?.country || 'Togo',
-//         shippingPhone: shippingAddress?.phone || customerInfo.phone,
-//         // shippingLatitude: shippingAddress?.latitude || null,
-//         // shippingLongitude: shippingAddress?.longitude || null,
-
-//         shippingLatitude: shippingAddress?.latitude ? parseFloat(shippingAddress.latitude.toString()) : null,
-//         shippingLongitude: shippingAddress?.longitude ? parseFloat(shippingAddress.longitude.toString()) : null,
-
-//         subtotal: subtotal || 0,
-//         shippingCost: shippingCost || 0,
-//         discount: 0,
-//         total: total || 0,
-//         status: 'pending',
-//         paymentStatus: 'pending',
-//         paymentMethod: paymentMethod || null,
-//         items: {
-//           create: items.map((item: Record<string, unknown>) => ({
-//             productId: item.productId as string || null,
-//             productName: item.productName as string || item.name as string,
-//             productImage: item.productImage as string || item.image as string || null,
-//             colorName: item.colorName as string || null,
-//             size: item.size as string,
-//             quantity: item.quantity as number,
-//             unitPrice: item.unitPrice as number || item.price as number,
-//             totalPrice: (item.unitPrice as number || item.price as number) * (item.quantity as number)
-//           }
-        
-//         ))
-//         }
-//       },
-//       include: {
-//         items: true
-//       }
-//     })
-
-//     // Clear cart after order creation
-//     if (userId) {
-//       await db.cartItem.deleteMany({ where: { userId } })
-//     }
-
-//     return NextResponse.json({
-//       message: 'Commande créée avec succès',
-//       order
-//     })
-//   } catch (error) {
-//     console.error('Create order error:', error)
-//     console.error('Erreur complète:', error)
-//     return NextResponse.json(
-//       { error: 'Erreur lors de la création de la commande' },
-//       { status: 500 }
-//     )
-//   }
-// }
 
 export async function POST(request: NextRequest) {
   try {
     const userId = request.headers.get('x-user-id')
-    const validUserId = userId && userId !== '' ? userId : null  // <-- AJOUTEZ CETTE LIGNE
-    
+    const validUserId = userId && userId !== '' ? userId : null
     const body = await request.json()
     console.log('Données reçues:', JSON.stringify(body, null, 2))
-    
-    const { 
-      items, 
-      customerInfo, 
-      shippingAddress, 
-      paymentMethod,
-      subtotal,
-      shippingCost,
-      total
-    } = body
+
+    const { items, customerInfo, shippingAddress, paymentMethod, subtotal, shippingCost, total } = body
 
     if (!items || items.length === 0) {
-      return NextResponse.json(
-        { error: 'Le panier est vide' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Le panier est vide' }, { status: 400 })
     }
-
     if (!customerInfo?.email || !customerInfo?.phone) {
-      return NextResponse.json(
-        { error: 'Informations de contact requises' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Informations de contact requises' }, { status: 400 })
     }
 
+    // VÉRIFICATION DU STOCK AVANT CRÉATION
+    for (const item of items) {
+      if (!item.productId) continue
+
+      const productColor = await db.productColor.findFirst({
+        where: {
+          productId: item.productId,
+          colorName: item.colorName || undefined
+        }
+      })
+
+      if (!productColor) continue
+
+      const sizes = JSON.parse(productColor.sizes) as {
+        size: string
+        price: number
+        stock: number
+      }[]
+
+      const sizeInfo = sizes.find(s => s.size === item.size)
+
+      if (!sizeInfo) {
+        return NextResponse.json({
+          error: `Taille ${item.size} non disponible pour ${item.productName}`
+        }, { status: 400 })
+      }
+
+      if (sizeInfo.stock <= 0) {
+        return NextResponse.json({
+          error: `Désolé, ${item.productName} taille ${item.size}${item.colorName ? ` (${item.colorName})` : ''} est épuisé`
+        }, { status: 400 })
+      }
+
+      if (sizeInfo.stock < item.quantity) {
+        return NextResponse.json({
+          error: `Stock insuffisant pour ${item.productName} taille ${item.size} — seulement ${sizeInfo.stock} disponible(s)`
+        }, { status: 400 })
+      }
+    }
+
+    // CRÉATION DE LA COMMANDE
     const orderNumber = await generateOrderNumber()
 
     const order = await db.order.create({
       data: {
         orderNumber,
-        userId: validUserId,  // <-- UTILISEZ validUserId ICI
+        userId: validUserId,
         customerEmail: customerInfo.email,
         customerPhone: customerInfo.phone,
         customerFirstName: customerInfo.firstName || null,
@@ -302,29 +191,23 @@ export async function POST(request: NextRequest) {
           }))
         }
       },
-      include: {
-        items: true
-      }
+      include: { items: true }
     })
 
     if (validUserId) {
       await db.cartItem.deleteMany({ where: { userId: validUserId } })
     }
 
-    return NextResponse.json({
-      message: 'Commande créée avec succès',
-      order
-    })
+    return NextResponse.json({ message: 'Commande créée avec succès', order })
   } catch (error) {
     console.error('Erreur complète:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la création de la commande', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return NextResponse.json({
+      error: 'Erreur lors de la création de la commande',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
 
-// PUT - Update order (admin or status update)
 export async function PUT(request: NextRequest) {
   try {
     const isAdmin = request.headers.get('x-is-admin') === 'true'
@@ -332,18 +215,10 @@ export async function PUT(request: NextRequest) {
     const { id, status, paymentStatus, trackingNumber, notes, estimatedDelivery } = body
 
     if (!id) {
-      return NextResponse.json(
-        { error: 'ID commande requis' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'ID commande requis' }, { status: 400 })
     }
-
-    // Only admin can update most fields
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Non autorisé' },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
     }
 
     const updateData: Record<string, unknown> = {}
@@ -356,21 +231,12 @@ export async function PUT(request: NextRequest) {
     const order = await db.order.update({
       where: { id },
       data: updateData,
-      include: {
-        items: true,
-        payments: true
-      }
+      include: { items: true, payments: true }
     })
 
-    return NextResponse.json({
-      message: 'Commande mise à jour',
-      order
-    })
+    return NextResponse.json({ message: 'Commande mise à jour', order })
   } catch (error) {
     console.error('Update order error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la mise à jour de la commande' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur lors de la mise à jour de la commande' }, { status: 500 })
   }
 }

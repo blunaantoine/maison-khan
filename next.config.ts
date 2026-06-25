@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  allowedDevOrigins: ['upturned-overall-spirits.ngrok-free.dev'],
 };
 
 export default nextConfig;

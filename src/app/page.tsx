@@ -35,15 +35,16 @@ interface CheckoutFormProps {
   onDirectCheckout: () => void
   payGateLoading: boolean
   formatPrice: (price: number) => string
-  orderItems: { name: string; size: string; colorName?: string; price: number; qty: number }[]
+  orderItems: { name: string; size: string; colorName?: string; price: number; qty: number; id?: string; image?: string }[]
   subtotal: number
-  user?: { email?: string; phone?: string; firstName?: string; lastName?: string } | null
+  user?: { email?: string; phone?: string; firstName?: string; lastName?: string; id?: string } | null
   checkoutFormRef?: React.RefObject<CheckoutFormRef | null>
 
   checkoutEmail: string
   setCheckoutEmail: (v: string) => void
   checkoutPhone: string
   setCheckoutPhone: (v: string) => void
+  onCloseModal: () => void
 }
 
 export interface CheckoutFormRef {
@@ -73,6 +74,7 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
   setCheckoutEmail,   
   checkoutPhone,      
   setCheckoutPhone,
+  onCloseModal,
 }, ref) {
   const emailRef = useRef<HTMLInputElement>(null)
   const firstNameRef = useRef<HTMLInputElement>(null)
@@ -298,133 +300,110 @@ useImperativeHandle(ref, () => ({
             <span>{formatPrice(total)}</span>
           </div>
 
-          {/* <p className="text-center text-sm text-[#6B6560] pt-4">Choisissez votre mode de paiement Mobile Money</p> */}
-
           <div className="space-y-3">
-         
-            {/* DÉBUT BOUTON FEDAPAY */}
-            {/* <p className="text-center text-xs text-[#6B6560]">ou</p> */}
 
             <button
-              onClick={async () => {
+              id="paydunya-psr-btn"
+              className="w-full bg-white border-2 border-[#d97a1a] text-[#d97a1a] py-4 px-6 rounded-lg transition-all duration-300 group disabled:opacity-60"
+              onClick={async (e) => {
+                const btn = e.currentTarget as HTMLButtonElement
+                if (btn.disabled) return
 
                 const formData = checkoutFormRef?.current?.getFormData()
-                
                 const items = orderItems
-                
-                if (items.length === 0) {
-                  alert('Votre panier est vide')
-                  return
-                }
-                
+
+                if (items.length === 0) { alert('Votre panier est vide'); return }
+
                 const itemsWithIds = items.filter(item => item.id)
                 if (itemsWithIds.length !== items.length) {
-                  console.error('Items sans ID:', items.filter(item => !item.id))
-                  alert('Erreur: certains articles n\'ont pas d\'identifiant valide. Veuillez rafraîchir la page.')
+                  alert('Erreur: certains articles n\'ont pas d\'identifiant valide.')
                   return
                 }
-                
-                const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
-                
-                const customerEmail = formData?.email?.trim() || user?.email?.trim()
-                if (!customerEmail) {
-                  alert('Email requis pour le paiement')
-                  return
-                }
-                
-                const phone = formData?.phone || user?.phone
-                if (!phone) {
-                  alert('Numéro de téléphone requis pour le paiement')
-                  return
-                }
-                
-                try {
 
-                  const orderData = {
-                    items: items.map(item => ({
-                      productId: item.id,
-                      productName: item.name,
-                      productImage: item.image || null,
-                      colorName: item.colorName || null,
-                      size: item.size,
-                      quantity: item.qty,
-                      unitPrice: item.price
-                    })),
-                    customerInfo: {
-                      email: customerEmail,
-                      phone: phone,
-                      firstName: formData?.firstName || user?.firstName || null,
-                      lastName: formData?.lastName || user?.lastName || null
-                    },
-                    shippingAddress: {
-                      city: formData?.city || null,
-                      address: formData?.address || null,
-                      country: 'Togo',
-                      phone: phone,
-                      latitude: formData?.latitude ? Number(formData.latitude) : null,
-                      longitude: formData?.longitude ? Number(formData.longitude) : null
-                    },
-                    subtotal: subtotal,
-                    shippingCost: 0,
-                    total: subtotal,
-                    paymentMethod: 'fedapay'
-                  }
-                                    
+                const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
+                const customerEmail = formData?.email?.trim() || user?.email?.trim()
+                if (!customerEmail) { alert('Email requis pour le paiement'); return }
+                const phone = formData?.phone || user?.phone
+                if (!phone) { alert('Numéro de téléphone requis'); return }
+
+                btn.disabled = true
+                const originalLabel = btn.innerHTML
+                btn.innerHTML = '<span class="text-sm font-medium uppercase tracking-wider">Redirection vers PayDunya...</span>'
+
+                try {
+                  // 1- création de la commande P
                   const orderRes = await fetch('/api/orders', {
                     method: 'POST',
-                    headers: { 
-                      'Content-Type': 'application/json', 
-                      'x-user-id': user?.id || '' 
-                    },
-                    body: JSON.stringify(orderData)
+                    headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+                    body: JSON.stringify({
+                      items: items.map(item => ({
+                        productId: item.id, productName: item.name,
+                        productImage: item.image || null, colorName: item.colorName || null,
+                        size: item.size, quantity: item.qty, unitPrice: item.price
+                      })),
+                      customerInfo: {
+                        email: customerEmail, phone,
+                        firstName: formData?.firstName || user?.firstName || null,
+                        lastName: formData?.lastName || user?.lastName || null
+                      },
+                      shippingAddress: {
+                        city: formData?.city || null, address: formData?.address || null,
+                        country: 'Togo', phone,
+                        latitude: formData?.latitude ? Number(formData.latitude) : null,
+                        longitude: formData?.longitude ? Number(formData.longitude) : null
+                      },
+                      subtotal, shippingCost: 0, total: subtotal, paymentMethod: 'paydunya'
+                    })
                   })
-
                   const responseData = await orderRes.json()
-
-                  if (!orderRes.ok) {
-                    console.error('Erreur API:', responseData)
+                  if (!orderRes.ok || !responseData.order?.id) {
                     alert(responseData.error || 'Erreur création commande')
+                    btn.disabled = false; btn.innerHTML = originalLabel
                     return
                   }
 
-                  if (!responseData.order || !responseData.order.id) {
-                    console.error('Commande invalide:', responseData)
-                    alert('Erreur: la commande n\'a pas pu être créée')
+                  const orderId = responseData.order.id
+
+                  // 2- création facture P côté serveur
+                  const invRes = await fetch('/api/paydunya-psr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId }),
+                  })  
+
+                  const invData = await invRes.json()
+
+                  if (!invRes.ok || !invData.success || !invData.url) {
+                    alert(invData.error || 'Impossible d\'initialiser le paiement')
+                    btn.disabled = false; btn.innerHTML = originalLabel
                     return
                   }
-                  
-                  const paymentUrl = `/fedapay-checkout.html?orderId=${responseData.order.id}`
-                  window.open(paymentUrl, '_blank')
-                  
+
+                  window.location.href = invData.url
+
                 } catch (error) {
-                  console.error('FedaPay error:', error)
+                  console.error('PayDunya error:', error)
                   alert('Erreur lors de l\'initialisation du paiement: ' + (error instanceof Error ? error.message : 'Erreur inconnue'))
+                  btn.disabled = false; btn.innerHTML = originalLabel
                 }
               }}
-              className="w-full bg-white border-2 border-[#1a7a4a] text-[#1a7a4a] py-4 px-6 rounded-lg transition-all duration-300 group"
-              >
-                <div className="flex items-center justify-between gap-4">
-
-                  <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+            >
+              <div className="flex items-center justify-between gap-4">
+                <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                <span className="text-sm font-medium uppercase tracking-wider">Payer maintenant</span>
+                <div className="flex items-center gap-3 transition-opacity">
+                  <img src="/logos-mobile-money.png" alt="Mobile Money" className="h-8 md:h-10 w-auto object-contain" />
+                  <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-
-                  <span className="text-sm font-medium uppercase tracking-wider">Payer via Mobile Money</span>
-                  <div className="flex items-center gap-3 transition-opacity">
-                    <img 
-                      src="/logos-mobile-money.png" 
-                      alt="Mobile Money - Flooz, TMoney, ..."
-                      className="h-8 md:h-10 w-auto object-contain"
-                    />
-                    <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
                 </div>
-              </button>
-                      
-            {/* FIN BOUTON FEDAPAY */}
-          
+              </div>
+            </button>
+
+            {/* FIN BOUTON PAYDUNYA */}
+
           </div>
 
           {/* <div className="bg-[#EDE8E1] p-4 text-sm space-y-2">
@@ -2014,6 +1993,7 @@ export default function Home() {
               setCheckoutEmail={setCheckoutEmail}
               checkoutPhone={checkoutPhone}
               setCheckoutPhone={setCheckoutPhone}
+              onCloseModal={() => setShowCheckoutModal(false)}
             />
 
           </div>
@@ -4577,6 +4557,7 @@ export default function Home() {
                 setCheckoutEmail={setCheckoutEmail}
                 checkoutPhone={checkoutPhone}
                 setCheckoutPhone={setCheckoutPhone}
+                onCloseModal={() => setShowCheckoutModal(false)}
               />
             </div>
           </div>
