@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth'
 
 // GET - Fetch logo
 export async function GET() {
@@ -16,8 +17,11 @@ export async function GET() {
 }
 
 // POST - Save logo
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const body = await request.json()
     const { value } = body
     

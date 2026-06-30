@@ -4,16 +4,22 @@ import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
-// Secret pour sécuriser le webhook (à définir dans .env)
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'maison-khan-deploy-2024'
+// Secret pour sécuriser le webhook (obligatoire via env)
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET
 
 export async function POST(request: NextRequest) {
   try {
-    // Vérifier le secret dans les headers ou query params
+    if (!DEPLOY_SECRET) {
+      console.error('[DEPLOY] DEPLOY_SECRET non configuré')
+      return NextResponse.json(
+        { error: 'Déploiement non configuré' },
+        { status: 503 }
+      )
+    }
+
+    // Vérifier le secret uniquement dans les headers
     const authHeader = request.headers.get('authorization')
-    const urlSecret = request.nextUrl.searchParams.get('secret')
-    
-    const providedSecret = authHeader?.replace('Bearer ', '') || urlSecret
+    const providedSecret = authHeader?.replace('Bearer ', '')
     
     if (providedSecret !== DEPLOY_SECRET) {
       return NextResponse.json(
@@ -57,10 +63,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  // Vérifier le secret
-  const urlSecret = request.nextUrl.searchParams.get('secret')
+  // Vérifier le secret via header uniquement
+  const authHeader = request.headers.get('authorization')
+  const providedSecret = authHeader?.replace('Bearer ', '')
   
-  if (urlSecret !== DEPLOY_SECRET) {
+  if (!DEPLOY_SECRET || providedSecret !== DEPLOY_SECRET) {
     return NextResponse.json(
       { error: 'Non autorisé' },
       { status: 401 }
@@ -70,6 +77,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     status: 'ok',
     message: 'API de déploiement MAISON KHAN',
-    usage: 'POST /api/deploy?secret=VOTRE_SECRET'
+    usage: 'POST /api/deploy avec header Authorization: Bearer VOTRE_SECRET'
   })
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth'
 
 // GET - Récupérer tout le contenu ou par catégorie
 export async function GET(request: NextRequest) {
@@ -24,6 +25,9 @@ export async function GET(request: NextRequest) {
 // POST - Créer ou mettre à jour du contenu
 export async function POST(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const body = await request.json()
     const { key, value, description, category } = body
     
@@ -47,6 +51,9 @@ export async function POST(request: NextRequest) {
 // DELETE - Supprimer du contenu
 export async function DELETE(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const { searchParams } = new URL(request.url)
     const key = searchParams.get('key')
     

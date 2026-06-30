@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth'
 
 // GET - Get all orders (admin)
 export async function GET(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
-
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Accès non autorisé' },
-        { status: 403 }
-      )
-    }
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -91,14 +86,8 @@ export async function GET(request: NextRequest) {
 // PUT - Update order (admin)
 export async function PUT(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
-
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Accès non autorisé' },
-        { status: 403 }
-      )
-    }
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
 
     const body = await request.json()
     const { id, status, paymentStatus, trackingNumber, notes, estimatedDelivery } = body
@@ -142,14 +131,8 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete order (admin only)
 export async function DELETE(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
-
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Accès non autorisé' },
-        { status: 403 }
-      )
-    }
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

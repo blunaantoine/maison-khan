@@ -5,13 +5,12 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 // Cache bust: v7 - force reload for isBestSeller and isNew fields
-// In development, always create a new client to pick up schema changes
-const forceNewClient = process.env.NODE_ENV !== 'production'
+const isDev = process.env.NODE_ENV !== 'production'
 
 export const db =
-  (forceNewClient ? undefined : globalForPrisma.prisma) ??
+  (isDev ? undefined : globalForPrisma.prisma) ??
   new PrismaClient({
-    log: ['query'],
+    log: isDev ? ['query', 'error', 'warn'] : ['error', 'warn'],
   })
 
-if (process.env.NODE_ENV !== 'production' && !forceNewClient) globalForPrisma.prisma = db
+if (isDev && !globalForPrisma.prisma) globalForPrisma.prisma = db

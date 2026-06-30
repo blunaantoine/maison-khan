@@ -1,6 +1,7 @@
 // API Products - Simplified with ProductColor (image + color)
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth'
 
 // GET - Fetch all products with colors
 export async function GET() {
@@ -54,8 +55,11 @@ export async function GET() {
 }
 
 // POST - Create a new product with colors
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const body = await request.json()
     const { name, description, category, subCategory, genre, image, sizes, type, isBestSeller, isNew, colors } = body
     
@@ -139,8 +143,11 @@ export async function POST(request: Request) {
 }
 
 // PUT - Update a product with colors
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const body = await request.json()
     const { id, name, description, category, subCategory, genre, image, sizes, type, isActive, isBestSeller, isNew, colors } = body
     
@@ -228,8 +235,11 @@ export async function PUT(request: Request) {
 }
 
 // DELETE - Delete a product
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     

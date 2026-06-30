@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth'
 
 const generateOrderNumber = async () => {
   const year = new Date().getFullYear()
@@ -210,15 +211,14 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const isAdmin = request.headers.get('x-is-admin') === 'true'
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const body = await request.json()
     const { id, status, paymentStatus, trackingNumber, notes, estimatedDelivery } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID commande requis' }, { status: 400 })
-    }
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
     }
 
     const updateData: Record<string, unknown> = {}

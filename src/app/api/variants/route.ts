@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth'
 
 // GET - Fetch all variants for a product
 export async function GET(request: Request) {
@@ -28,8 +29,11 @@ export async function GET(request: Request) {
 }
 
 // POST - Create a new variant
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const body = await request.json()
     const { productId, colorName, colorValue, price, stock, images } = body
     
@@ -71,8 +75,11 @@ export async function POST(request: Request) {
 }
 
 // PUT - Update a variant
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const body = await request.json()
     const { id, colorName, colorValue, price, stock, images, isActive } = body
     
@@ -96,8 +103,11 @@ export async function PUT(request: Request) {
 }
 
 // DELETE - Delete a variant
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     
