@@ -1,12 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth'
 
-// DELETE - Delete a hero slide
+// POST - Create a hero slide's DELETE
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminCheck = await requireAdmin(request)
+    if (adminCheck) return adminCheck
+
     const { id } = await params
     
     await db.heroSlide.delete({
