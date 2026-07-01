@@ -7,14 +7,6 @@ import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { AdminOrdersTab } from '@/components/admin/AdminOrdersTab'
 import { AdminUsersTab } from '@/components/admin/AdminUsersTab'
 
-// DÉBUT FEDAPAY TYPE DECLARATION
-declare global {
-  interface Window {
-    FedaPay: any
-  }
-}
-// FIN FEDAPAY TYPE DECLARATION
-
 // Auth Form Component - Separate to prevent re-renders
 interface AuthFormProps {
   mode: 'login' | 'register'
@@ -72,9 +64,9 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
   subtotal,
   user,
   checkoutFormRef,
-  checkoutEmail,     
-  setCheckoutEmail,   
-  checkoutPhone,      
+  checkoutEmail,
+  setCheckoutEmail,
+  checkoutPhone,
   setCheckoutPhone,
 }, ref) {
   const emailRef = useRef<HTMLInputElement>(null)
@@ -101,7 +93,7 @@ const CheckoutForm = memo(forwardRef<CheckoutFormRef, CheckoutFormProps>(functio
         const { latitude, longitude } = position.coords
         setLocation({ latitude, longitude })
         setIsGettingLocation(false)
-        
+
         // Pré-remplir l'adresse avec les coordonnées
         if (addressRef.current && !addressRef.current.value) {
           addressRef.current.value = `Lat: ${latitude.toFixed(6)}, Long: ${longitude.toFixed(6)}`
@@ -198,7 +190,7 @@ useImperativeHandle(ref, () => ({
       {checkoutStep === 'shipping' && (
         <div className="space-y-4">
           <h3 className="font-medium mb-4">Adresse de livraison</h3>
-          
+
           {/* Bouton géolocalisation */}
           <button
             type="button"
@@ -224,11 +216,11 @@ useImperativeHandle(ref, () => ({
               </>
             )}
           </button>
-          
+
           {locationError && (
             <p className="text-red-500 text-sm text-center">{locationError}</p>
           )}
-          
+
           {location.latitude && location.longitude && (
             <div className="bg-green-50 border border-green-200 p-3 flex items-center gap-2">
               <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -239,7 +231,7 @@ useImperativeHandle(ref, () => ({
               </span>
             </div>
           )}
-          
+
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-[#E5E0DA]"></div>
@@ -248,7 +240,7 @@ useImperativeHandle(ref, () => ({
               <span className="px-2 bg-[#F8F6F3] text-[#6B6560]">ou entrez manuellement</span>
             </div>
           </div>
-          
+
           <input
             ref={cityRef}
             type="text"
@@ -286,7 +278,7 @@ useImperativeHandle(ref, () => ({
       {checkoutStep === 'payment' && (
         <div className="space-y-4">
           <h3 className="font-medium mb-4">Récapitulatif</h3>
-          
+
           <div className="bg-[#EDE8E1] p-4 space-y-2">
             {orderItems.map((item, idx) => (
               <div key={idx} className="flex justify-between text-sm">
@@ -304,134 +296,109 @@ useImperativeHandle(ref, () => ({
           {/* <p className="text-center text-sm text-[#6B6560] pt-4">Choisissez votre mode de paiement Mobile Money</p> */}
 
           <div className="space-y-3">
-         
-            {/* DÉBUT BOUTON FEDAPAY */}
-            {/* <p className="text-center text-xs text-[#6B6560]">ou</p> */}
 
             <button
-              onClick={async () => {
+              id="paydunya-psr-btn"
+              className="w-full bg-white border-2 border-[#d97a1a] text-[#d97a1a] py-4 px-6 rounded-lg transition-all duration-300 group disabled:opacity-60"
+              onClick={async (e) => {
+                const btn = e.currentTarget as HTMLButtonElement
+                if (btn.disabled) return
 
                 const formData = checkoutFormRef?.current?.getFormData()
-                
                 const items = orderItems
-                
-                if (items.length === 0) {
-                  alert('Votre panier est vide')
-                  return
-                }
-                
+
+                if (items.length === 0) { alert('Votre panier est vide'); return }
+
                 const itemsWithIds = items.filter(item => item.id)
                 if (itemsWithIds.length !== items.length) {
-                  console.error('Items sans ID:', items.filter(item => !item.id))
-                  alert('Erreur: certains articles n\'ont pas d\'identifiant valide. Veuillez rafraîchir la page.')
+                  alert('Erreur: certains articles n\'ont pas d\'identifiant valide.')
                   return
                 }
-                
-                const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
-                
-                const customerEmail = formData?.email?.trim() || user?.email?.trim()
-                if (!customerEmail) {
-                  alert('Email requis pour le paiement')
-                  return
-                }
-                
-                const phone = formData?.phone || user?.phone
-                if (!phone) {
-                  alert('Numéro de téléphone requis pour le paiement')
-                  return
-                }
-                
-                try {
 
-                  const orderData = {
-                    items: items.map(item => ({
-                      productId: item.id,
-                      productName: item.name,
-                      productImage: item.image || null,
-                      colorName: item.colorName || null,
-                      size: item.size,
-                      quantity: item.qty,
-                      unitPrice: item.price
-                    })),
-                    customerInfo: {
-                      email: customerEmail,
-                      phone: phone,
-                      firstName: formData?.firstName || user?.firstName || null,
-                      lastName: formData?.lastName || user?.lastName || null
-                    },
-                    shippingAddress: {
-                      city: formData?.city || null,
-                      address: formData?.address || null,
-                      country: 'Togo',
-                      phone: phone,
-                      latitude: formData?.latitude ? Number(formData.latitude) : null,
-                      longitude: formData?.longitude ? Number(formData.longitude) : null
-                    },
-                    subtotal: subtotal,
-                    shippingCost: 0,
-                    total: subtotal,
-                    paymentMethod: 'fedapay'
-                  }
-                                    
+                const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
+
+                const customerEmail = formData?.email?.trim() || user?.email?.trim()
+                if (!customerEmail) { alert('Email requis pour le paiement'); return }
+                const phone = formData?.phone || user?.phone
+                if (!phone) { alert('Numéro de téléphone requis'); return }
+
+                btn.disabled = true
+                const originalLabel = btn.innerHTML
+                btn.innerHTML = '<span class="text-sm font-medium uppercase tracking-wider">Redirection vers PayDunya...</span>'
+
+                try {
                   const orderRes = await fetch('/api/orders', {
                     method: 'POST',
-                    headers: { 
-                      'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify(orderData)
+                    body: JSON.stringify({
+                      items: items.map(item => ({
+                        productId: item.id, productName: item.name,
+                        productImage: item.image || null, colorName: item.colorName || null,
+                        size: item.size, quantity: item.qty, unitPrice: item.price
+                      })),
+                      customerInfo: {
+                        email: customerEmail, phone,
+                        firstName: formData?.firstName || user?.firstName || null,
+                        lastName: formData?.lastName || user?.lastName || null
+                      },
+                      shippingAddress: {
+                        city: formData?.city || null, address: formData?.address || null,
+                        country: 'Togo', phone,
+                        latitude: formData?.latitude ? Number(formData.latitude) : null,
+                        longitude: formData?.longitude ? Number(formData.longitude) : null
+                      },
+                      subtotal, shippingCost: 0, total: subtotal, paymentMethod: 'paydunya'
+                    })
                   })
-
                   const responseData = await orderRes.json()
-
-                  if (!orderRes.ok) {
-                    console.error('Erreur API:', responseData)
+                  if (!orderRes.ok || !responseData.order?.id) {
                     alert(responseData.error || 'Erreur création commande')
+                    btn.disabled = false; btn.innerHTML = originalLabel
                     return
                   }
 
-                  if (!responseData.order || !responseData.order.id) {
-                    console.error('Commande invalide:', responseData)
-                    alert('Erreur: la commande n\'a pas pu être créée')
+                  const orderId = responseData.order.id
+
+                  const invRes = await fetch('/api/paydunya-psr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId }),
+                  })
+                  const invData = await invRes.json()
+                  if (!invRes.ok || !invData.success || !invData.url) {
+                    alert(invData.error || 'Impossible d\'initialiser le paiement')
+                    btn.disabled = false; btn.innerHTML = originalLabel
                     return
                   }
-                  
-                  const paymentUrl = `/fedapay-checkout.html?orderId=${responseData.order.id}`
-                  window.open(paymentUrl, '_blank')
-                  
+
+                  window.location.href = invData.url
+
                 } catch (error) {
-                  console.error('FedaPay error:', error)
+                  console.error('PayDunya error:', error)
                   alert('Erreur lors de l\'initialisation du paiement: ' + (error instanceof Error ? error.message : 'Erreur inconnue'))
+                  btn.disabled = false; btn.innerHTML = originalLabel
                 }
               }}
-              className="w-full bg-white border-2 border-[#1a7a4a] text-[#1a7a4a] py-4 px-6 rounded-lg transition-all duration-300 group"
               >
-                <div className="flex items-center justify-between gap-4">
-
-                  <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              <div className="flex items-center justify-between gap-4">
+                <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                <span className="text-sm font-medium uppercase tracking-wider">Payer maintenant</span>
+                <div className="flex items-center gap-3 transition-opacity">
+                  <img src="/logos-mobile-money.png" alt="Mobile Money" className="h-8 md:h-10 w-auto object-contain" />
+                  <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-
-                  <span className="text-sm font-medium uppercase tracking-wider">Payer via Mobile Money</span>
-                  <div className="flex items-center gap-3 transition-opacity">
-                    <img 
-                      src="/logos-mobile-money.png" 
-                      alt="Mobile Money - Flooz, TMoney, ..."
-                      className="h-8 md:h-10 w-auto object-contain"
-                    />
-                    <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
                 </div>
-              </button>
-                      
-            {/* FIN BOUTON FEDAPAY */}
-          
+              </div>
+            </button>
+
           </div>
 
           {/* <div className="bg-[#EDE8E1] p-4 text-sm space-y-2">
-            <p className="font-medium mb-2">ℹ️ Modes de paiement</p>
+            <p className="font-medium mb-2">i️ Modes de paiement</p>
             <div className="space-y-1 text-[#6B6560]">
               <p><strong>Moov Money:</strong> Paiement Mobile Money Moov instantané.</p>
               <p><strong>T-Money:</strong> Paiement Mobile Money Togocel instantané.</p>
@@ -452,14 +419,14 @@ useImperativeHandle(ref, () => ({
   )
 }))
 
-const AuthForm = memo(function AuthForm({ 
-  mode, 
-  onSubmit, 
-  onForgotPassword, 
-  onSwitchMode, 
-  showPassword, 
+const AuthForm = memo(function AuthForm({
+  mode,
+  onSubmit,
+  onForgotPassword,
+  onSwitchMode,
+  showPassword,
   onTogglePassword,
-  forgotPasswordLoading 
+  forgotPasswordLoading
 }: AuthFormProps) {
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
@@ -526,9 +493,9 @@ const AuthForm = memo(function AuthForm({
             autoComplete="current-password"
             className="w-full p-3 pr-12 border border-[#E5E0DA] bg-white"
           />
-          <button 
+          <button
             type="button"
-            onClick={onTogglePassword} 
+            onClick={onTogglePassword}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6560] hover:text-[#0A0A0A] transition-colors"
           >
             {showPassword ? (
@@ -690,7 +657,7 @@ const AuthForm = memo(function AuthForm({
           {mode === 'login' ? 'Se connecter' : 'Créer le compte'}
         </button>
       </form>
-      
+
       {/* Mot de passe oublié */}
       {mode === 'login' && (
         <div className="mt-3 text-center">
@@ -703,7 +670,7 @@ const AuthForm = memo(function AuthForm({
           </button>
         </div>
       )}
-      
+
       <div className="mt-4 text-center">
         <button
           onClick={onSwitchMode}
@@ -1040,12 +1007,12 @@ export default function Home() {
     setShowCheckoutModal(true)
     setCheckoutStep('info')
   }
-  
+
   // Set mounted on client side
   useEffect(() => {
     setMounted(true)
   }, [])
-  
+
   // Admin Users State
   const [adminUsers, setAdminUsers] = useState<User[]>([])
   const [showUserForm, setShowUserForm] = useState(false)
@@ -1058,12 +1025,12 @@ export default function Home() {
     phone: '',
     role: 'customer'
   })
-  
+
   // User & Auth State
   const [user, setUser] = useState<User | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  
+
   // Dashboard State
   const [showUserDashboard, setShowUserDashboard] = useState(false)
   const [dashboardTab, setDashboardTab] = useState<string>('orders')
@@ -1077,7 +1044,7 @@ export default function Home() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
-  
+
   // Checkout State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState<'info' | 'shipping' | 'payment'>('info')
@@ -1094,10 +1061,10 @@ export default function Home() {
     price: number
     quantity: number
   } | null>(null)
-  
+
   // Product modal - selected color
   const [selectedColorValue, setSelectedColorValue] = useState<string | null>(null)
-  
+
   // Form state - simplified
   const [formData, setFormData] = useState({
     name: '',
@@ -1111,7 +1078,7 @@ export default function Home() {
     isNew: true,
     colors: [] as ProductColor[]
   })
-  
+
   // New color being added
   const [newColor, setNewColor] = useState<{
     colorName: string
@@ -1119,10 +1086,10 @@ export default function Home() {
     images: string[]
     sizes: ColorSize[]
   } | null>(null)
-  
+
   // Index of color being edited (-1 = new color, >= 0 = editing existing)
   const [editingColorIndex, setEditingColorIndex] = useState<number>(-1)
-  
+
   // Subcategory modal state
   const [showSubCatModal, setShowSubCatModal] = useState(false)
   const [editingSubCat, setEditingSubCat] = useState<{id: string | null, name: string, genre: string, menuCategoryId: string}>({
@@ -1131,10 +1098,10 @@ export default function Home() {
     genre: 'all',
     menuCategoryId: ''
   })
-  
+
   const slideIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const megaMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
+
   const whatsappNumber = '22870166767'
 
   // Toast function
@@ -1165,7 +1132,7 @@ export default function Home() {
       showToast('Erreur', 'Le mot de passe doit contenir au moins 6 caractères', 'error')
       return
     }
-    
+
     try {
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
@@ -1177,7 +1144,7 @@ export default function Home() {
         })
       })
       const data = await res.json()
-      
+
       if (res.ok) {
         showToast('Succès', 'Mot de passe modifié avec succès')
         setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -1193,7 +1160,7 @@ export default function Home() {
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
     } catch {
-      // ignore — cookie will be cleared server-side anyway on next request
+      // ignore - cookie will be cleared server-side anyway on next request
     }
     setUser(null)
     setShowUserDashboard(false)
@@ -1203,7 +1170,7 @@ export default function Home() {
     showToast('Déconnexion', 'À bientôt !')
   }
 
-  // Load user from session cookie (JWT HttpOnly) — no more localStorage
+  // Load user from session cookie (JWT HttpOnly) - no more localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
     let cancelled = false
@@ -1216,11 +1183,11 @@ export default function Home() {
             setUser(data.user)
           }
         } else {
-          // Not authenticated — clear any stale localStorage from old version
+          // Not authenticated - clear any stale localStorage from old version
           localStorage.removeItem('user')
         }
       } catch {
-        // Network error — ignore
+        // Network error - ignore
       }
     })()
     return () => { cancelled = true }
@@ -1358,15 +1325,15 @@ export default function Home() {
       showToast('Erreur', 'Email et mot de passe requis', 'error')
       return
     }
-    
+
     // Debug: vérifier si l'utilisateur est bien chargé
     console.log('Creating user with admin id:', user?.id, 'role:', user?.role)
-    
+
     if (!user?.id) {
       showToast('Erreur', 'Session expirée, veuillez vous reconnecter', 'error')
       return
     }
-    
+
     try {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
@@ -1414,7 +1381,7 @@ export default function Home() {
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('Voulez-vous vraiment supprimer cet utilisateur ?')) return
     try {
-      const res = await fetch(`/api/admin/users?id=${userId}`, { 
+      const res = await fetch(`/api/admin/users?id=${userId}`, {
         method: 'DELETE',
         credentials: 'include'
       })
@@ -1433,14 +1400,14 @@ export default function Home() {
   // Checkout with PayGate
   const handlePayGateCheckout = async (network: 'FLOOZ' | 'TMONEY') => {
     const formData = checkoutFormRef.current?.getFormData()
-    
+
     // If no phone in form, show modal to ask for it
     if (!formData?.phone || formData.phone.trim() === '') {
       setPendingNetwork(network)
       setShowPhoneModal(true)
       return
     }
-    
+
     // Proceed with payment using phone from form
     await executePayGatePayment(network, formData.phone)
   }
@@ -1483,7 +1450,7 @@ export default function Home() {
           })
         })
         const data = await res.json()
-        
+
         if (res.ok) {
           showToast('Succès', 'Commande enregistrée avec succès !')
           // setShowCheckoutModal(false)
@@ -1501,10 +1468,10 @@ export default function Home() {
   // Execute PayGate payment with phone number
   const executePayGatePayment = async (network: 'FLOOZ' | 'TMONEY', phoneNumber: string) => {
     const formData = checkoutFormRef.current?.getFormData()
-    
+
     console.log('📦 Checkout Form Data:', formData)
     console.log('📱 Phone value:', phoneNumber)
-    
+
     // Use directOrder if available, otherwise use cart
     const items = directOrder ? [{
       id: directOrder.product.id,
@@ -1515,14 +1482,14 @@ export default function Home() {
       qty: directOrder.quantity,
       image: directOrder.product.image
     }] : cart
-    
+
     if (items.length === 0) return
-    
+
     const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
-    
+
     setPayGateLoading(true)
     setShowPhoneModal(false)
-    
+
     try {
       // Create order
       const res = await fetch('/api/orders', {
@@ -1559,22 +1526,22 @@ export default function Home() {
           paymentMethod: network === 'FLOOZ' ? 'moov_money' : 't_money'
         })
       })
-      
+
       const data = await res.json()
-      
+
       if (res.ok) {
         // Initialize PayGate payment
         const paymentRes = await fetch('/api/paygate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             orderId: data.order.id,
             phoneNumber: phoneNumber,
             network: network
           })
         })
         const paymentData = await paymentRes.json()
-        
+
         if (paymentData.success) {
           // Payment initiated successfully
           showToast('Paiement initié', paymentData.instructions || 'Vous allez recevoir une demande de confirmation sur votre téléphone.')
@@ -1596,20 +1563,24 @@ export default function Home() {
   }
 
 
-  // DÉBUT FEDAPAY HANDLER
-  const handleFedaPay = (orderId: string, total: number) => {
-    const params = new URLSearchParams({
-      orderId: orderId,
-      amount: total.toString(),
-      email: encodeURIComponent(formData.email || user?.email || ''),
-      firstname: encodeURIComponent(formData.firstName || user?.firstName || ''),
-      lastname: encodeURIComponent(formData.lastName || user?.lastName || '')
-    })
-    
-    const paymentWindow = window.open(`/fedapay-checkout.html?${params.toString()}`, '_blank')
-    
+  // PayDunya handler — redirect to PayDunya invoice URL
+  const handlePayDunya = async (orderId: string) => {
+    try {
+      const res = await fetch('/api/paydunya-psr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      })
+      const data = await res.json()
+      if (data.success && data.url) {
+        window.location.href = data.url
+      } else {
+        alert(data.error || 'Impossible d\'initialiser le paiement')
+      }
+    } catch (error) {
+      alert('Erreur de paiement: ' + (error instanceof Error ? error.message : 'Erreur inconnue'))
+    }
   }
-  // FIN FEDAPAY HANDLER
 
 
   // Fetch initial data
@@ -1625,7 +1596,7 @@ export default function Home() {
           fetch('/api/settings/maison-image'),
           fetch('/api/content')
         ])
-        
+
         if (productsRes.ok) setProducts(await productsRes.json())
         if (menuRes.ok) {
           const data = await menuRes.json()
@@ -1660,7 +1631,7 @@ export default function Home() {
   useEffect(() => {
     // Pause slider when any modal is open
     const isModalOpen = showAuthModal || showProductModal || showCheckoutModal || showProductFormModal || showSubCatModal
-    
+
     if (heroSlides.length > 1 && !isModalOpen) {
       const currentInterval = heroSlides[currentSlide]?.interval || 5000
       if (slideIntervalRef.current) clearInterval(slideIntervalRef.current)
@@ -1727,7 +1698,7 @@ export default function Home() {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id && item.size === size && item.color === color)
       if (existing) {
-        return prev.map(item => 
+        return prev.map(item =>
           item.id === product.id && item.size === size && item.color === color
             ? { ...item, qty: item.qty + 1 }
             : item
@@ -1791,7 +1762,7 @@ export default function Home() {
         return
       }
     }
-    
+
     const sizesToSave = formType === 'accessoire' && formData.sizes.length === 0 ? ['Unique'] : formData.sizes
     const colorsToSave = formData.colors.map(c => ({
       colorName: c.colorName,
@@ -1799,7 +1770,7 @@ export default function Home() {
       images: c.images || [],
       sizes: c.sizes?.map(s => ({ size: s.size, price: s.price, stock: s.stock })) || []
     }))
-    
+
     const productData = {
       name: formData.name,
       category: formData.category,
@@ -1813,19 +1784,21 @@ export default function Home() {
       isNew: formData.isNew,
       colors: colorsToSave
     }
-    
+
     try {
       let res
       if (editingProduct) {
         res = await fetch('/api/products', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ id: editingProduct.id, ...productData })
         })
       } else {
         res = await fetch('/api/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(productData)
         })
       }
@@ -1886,7 +1859,7 @@ export default function Home() {
   const deleteProduct = async (id: string) => {
     if (!confirm('Voulez-vous vraiment supprimer ce produit ?')) return
     try {
-      const res = await fetch(`/api/products?id=${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/products?id=${id}`, { method: 'DELETE', credentials: 'include' })
       if (res.ok) {
         setProducts(prev => prev.filter(p => p.id !== id))
         showToast("Succès", "Le produit a été supprimé avec succès")
@@ -1909,7 +1882,7 @@ export default function Home() {
   // Auth Modal Content
   const authModalContent = useMemo(() => {
     if (!showAuthModal) return null
-    
+
     const handleAuthSubmit = async (data: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }) => {
       if (authMode === 'login') {
         try {
@@ -1953,14 +1926,14 @@ export default function Home() {
         }
       }
     }
-    
+
     const handleForgotPasswordClick = async (email: string) => {
       if (!email) {
         showToast('Erreur', 'Veuillez entrer votre email d\'abord', 'error')
         return
       }
       if (forgotPasswordLoading) return
-      
+
       setForgotPasswordLoading(true)
       try {
         const res = await fetch('/api/auth/forgot-password', {
@@ -1969,7 +1942,7 @@ export default function Home() {
           body: JSON.stringify({ email })
         })
         const data = await res.json()
-        
+
         if (data.error) {
           showToast('Erreur', data.error, 'error')
         } else if (data.newPassword) {
@@ -1984,7 +1957,7 @@ export default function Home() {
         setForgotPasswordLoading(false)
       }
     }
-    
+
     return (
       <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setShowAuthModal(false)}>
         <div className="bg-[#F8F6F3] w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
@@ -1998,7 +1971,7 @@ export default function Home() {
               </svg>
             </button>
           </div>
-          
+
           <AuthForm
             mode={authMode}
             onSubmit={handleAuthSubmit}
@@ -2016,7 +1989,7 @@ export default function Home() {
   // Checkout Modal
   const CheckoutModal = () => {
     if (!showCheckoutModal) return null
-    
+
     // Use directOrder if available, otherwise use cart
     const orderItems = directOrder ? [{
       id: directOrder.product.id,
@@ -2027,9 +2000,9 @@ export default function Home() {
       qty: directOrder.quantity,
       image: directOrder.product.image
     }] : cart
-    
+
     const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.qty, 0)
-        
+
     return createPortal(
       <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4">
         <div className="bg-[#F8F6F3] w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -2043,7 +2016,7 @@ export default function Home() {
               </button>
             </div>
           </div>
-          
+
           <div className="p-6">
             {/* Steps */}
             <div className="flex mb-8">
@@ -2090,9 +2063,9 @@ export default function Home() {
     const stockClass = product.totalStock === 0 ? 'text-red-600' : product.totalStock <= 5 ? 'text-orange-600' : 'text-[#15803D]'
     const stockLabel = product.totalStock === 0 ? 'Rupture de stock' : product.totalStock <= 5 ? `Stock limité (${product.totalStock})` : 'En stock'
     const genreLabel = product.genre === 'homme' ? 'Homme' : product.genre === 'femme' ? 'Femme' : 'Mixte'
-    
+
     return (
-      <article 
+      <article
         className="product-card aspect-[3/4] cursor-pointer"
         style={{ transitionDelay: `${(index % 4) * 0.1}s` }}
         onClick={() => {
@@ -2127,7 +2100,7 @@ export default function Home() {
             <img src={logo || '/logo.png'} alt="MAISON KHAN Logo" className="h-12 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }} />
             <span className="font-display text-base sm:text-xl tracking-wider text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>MAISON KHAN</span>
           </button>
-          
+
           {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center gap-8 relative">
             <button className="nav-link text-xs font-medium tracking-widest uppercase text-[#0A0A0A]" onClick={() => navigateTo('home')}>Accueil</button>
@@ -2173,7 +2146,7 @@ export default function Home() {
             <button className="nav-link text-xs font-medium tracking-widest uppercase text-[#0A0A0A]" onClick={() => navigateTo('apropos')}>À propos</button>
             <button className="nav-link text-xs font-medium tracking-widest uppercase text-[#0A0A0A]" onClick={() => navigateTo('contact')}>Contact</button>
           </nav>
-          
+
           {/* User Menu & Cart */}
           <div className="hidden lg:flex items-center gap-4">
             {user ? (
@@ -2193,7 +2166,7 @@ export default function Home() {
                 Connexion
               </button>
             )}
-            
+
             {/* Cart Button */}
             <button
               onClick={() => setShowCartModal(true)}
@@ -2209,7 +2182,7 @@ export default function Home() {
               )}
             </button>
           </div>
-          
+
           {/* Mobile: Cart + Menu Toggle */}
           <div className="flex items-center gap-4 lg:hidden">
             {/* Mobile Cart Button */}
@@ -2290,7 +2263,7 @@ export default function Home() {
               <span>Contact</span>
               <svg className="w-5 h-5 text-[#6B6560]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" /></svg>
             </button>
-            
+
             {/* Mobile User Menu */}
             <div className="border-t border-[#E5E0DA]">
               {user ? (
@@ -2309,7 +2282,7 @@ export default function Home() {
                   <svg className="w-5 h-5 text-[#6B6560]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" /></svg>
                 </button>
               )}
-              
+
               {/* Mobile Cart Button */}
               <button className="w-full text-left px-6 py-4 text-[#0A0A0A] font-medium text-base hover:bg-[#EDE8E1] transition-colors flex items-center justify-between" onClick={() => { setIsMenuOpen(false); setShowCartModal(true); }}>
                 <span>Panier {cartCount > 0 && `(${cartCount})`}</span>
@@ -2348,7 +2321,7 @@ export default function Home() {
                 ))}
               </div>
             )}
-            
+
             {heroSlides.length > 1 && (
               <>
                 <button className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors z-10" onClick={() => setCurrentSlide(prev => prev === 0 ? heroSlides.length - 1 : prev - 1)}>
@@ -2364,7 +2337,7 @@ export default function Home() {
                 </div>
               </>
             )}
-            
+
             <div className="relative container mx-auto px-6 lg:px-12 pt-32 pb-20 z-10">
               {getContent('hero_title', '') || getContent('hero_title_highlight', '') || getContent('hero_description', '') ? (
                 <div className="max-w-5xl">
@@ -2390,7 +2363,7 @@ export default function Home() {
               ) : null}
             </div>
           </div>
-          
+
           {/* Nouveautés Section */}
           <div className="py-16 lg:py-24 bg-white">
             <div className="container mx-auto px-6 lg:px-12">
@@ -2417,7 +2390,7 @@ export default function Home() {
               )}
             </div>
           </div>
-          
+
           {/* Best-Sellers Section */}
           <div className="py-16 lg:py-24 bg-white">
             <div className="container mx-auto px-6 lg:px-12">
@@ -2437,7 +2410,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-          
+
           {/* Notre Savoir-Faire Section */}
           <div className="py-16 lg:py-24 bg-[#F8F6F3]">
             <div className="container mx-auto px-6 lg:px-12">
@@ -2490,7 +2463,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-          
+
           {/* Brand Statement */}
           <div className="relative py-32 lg:py-48 bg-[#0A0A0A] text-[#F8F6F3] grain overflow-hidden">
             <div className="relative container mx-auto px-6 lg:px-12 text-center">
@@ -2621,7 +2594,7 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-              
+
               {/* INTERNATIONAL ORDERS SECTION */}
               <div className="mt-20 pt-16 border-t border-[#6B6560]/10">
                 <div className="text-center mb-12">
@@ -2640,7 +2613,7 @@ export default function Home() {
 
                 {/* Info Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-10">
-                  
+
                   {/* Card 1 */}
                   <div className="bg-white border border-[#E5E0DA] p-6 hover:border-[#9C7C5C] transition-colors">
                     <div className="flex items-start gap-4">
@@ -2731,7 +2704,7 @@ export default function Home() {
 
                 {/* Contact Button */}
                 <div className="text-center">
-                  <a 
+                  <a
                     href={getWhatsAppLink("Bonjour MAISON KHAN, j'ai une question concernant les commandes internationales.")}
                     target="_blank"
                     rel="noopener"
@@ -2881,7 +2854,7 @@ export default function Home() {
                                 </p>
                                 {order.paymentMethod && (
                                   <p className="text-xs text-[#9C7C5C] mt-1 uppercase tracking-wider">
-                                    {order.paymentMethod === 'fedapay' ? 'Mobile Money (FedaPay)' :
+                                    {order.paymentMethod === 'paydunya' ? 'Mobile Money (PayDunya)' :
                                      order.paymentMethod === 'moov_money' ? 'Moov Money' :
                                      order.paymentMethod === 't_money' ? 'T-Money' :
                                      order.paymentMethod === 'direct' ? 'Commande directe' :
@@ -2977,7 +2950,7 @@ export default function Home() {
                                 {order.status === 'payment_failed' && (
                                   <button
                                     onClick={() => {
-                                      window.open('/fedapay-checkout.html?orderId=' + order.id, '_blank')
+                                      onClick={() => handlePayDunya(order.id)}
                                     }}
                                     className="flex-1 bg-[#1a7a4a] text-white py-3 px-4 text-sm uppercase tracking-wider hover:bg-[#155f39] transition-colors flex items-center justify-center gap-2"
                                   >
@@ -3050,7 +3023,7 @@ export default function Home() {
                           <div>
                             <label className="block text-sm text-[#6B6560] mb-1">Mot de passe actuel</label>
                             <div className="relative">
-                              <input 
+                              <input
                                 type={showCurrentPassword ? "text" : "password"}
                                 name="currentPassword"
                                 autoComplete="current-password"
@@ -3059,9 +3032,9 @@ export default function Home() {
                                 className="w-full p-3 pr-12 border border-[#E5E0DA] bg-white"
                                 placeholder="Entrez votre mot de passe actuel"
                               />
-                              <button 
+                              <button
                                 type="button"
-                                onClick={() => setShowCurrentPassword(!showCurrentPassword)} 
+                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6560] hover:text-[#0A0A0A] transition-colors"
                               >
                                 {showCurrentPassword ? (
@@ -3082,7 +3055,7 @@ export default function Home() {
                           <div>
                             <label className="block text-sm text-[#6B6560] mb-1">Nouveau mot de passe</label>
                             <div className="relative">
-                              <input 
+                              <input
                                 type={showNewPassword ? "text" : "password"}
                                 name="newPassword"
                                 autoComplete="new-password"
@@ -3091,9 +3064,9 @@ export default function Home() {
                                 className="w-full p-3 pr-12 border border-[#E5E0DA] bg-white"
                                 placeholder="Entrez votre nouveau mot de passe"
                               />
-                              <button 
+                              <button
                                 type="button"
-                                onClick={() => setShowNewPassword(!showNewPassword)} 
+                                onClick={() => setShowNewPassword(!showNewPassword)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6560] hover:text-[#0A0A0A] transition-colors"
                               >
                                 {showNewPassword ? (
@@ -3113,7 +3086,7 @@ export default function Home() {
                           {/* Confirmer le mot de passe */}
                           <div>
                             <label className="block text-sm text-[#6B6560] mb-1">Confirmer le nouveau mot de passe</label>
-                            <input 
+                            <input
                               type="password"
                               name="confirmPassword"
                               autoComplete="new-password"
@@ -3124,7 +3097,7 @@ export default function Home() {
                             />
                           </div>
 
-                          <button 
+                          <button
                             onClick={handleChangePassword}
                             className="bg-[#0A0A0A] text-white px-6 py-3 uppercase text-sm tracking-wider hover:bg-[#6B6560] transition-colors"
                           >
@@ -3397,7 +3370,7 @@ export default function Home() {
                     setShowSubCatModal(true)
                   }} className="px-4 py-2 bg-[#0A0A0A] text-[#F8F6F3] text-sm uppercase tracking-wider hover:bg-[#9C7C5C] transition-colors">+ Nouvelle sous-catégorie</button>
                 </div>
-                
+
                 {menuCategories.map((category) => (
                   <div key={category.id} className="mb-6 last:mb-0">
                     <div className="flex justify-between items-center mb-3">
@@ -3431,11 +3404,11 @@ export default function Home() {
                               <td className="p-3">{subCat.images?.length || 0}</td>
                               <td className="p-3">
                                 <button onClick={() => {
-                                  setEditingSubCat({ 
-                                    id: subCat.id, 
-                                    name: subCat.name, 
-                                    genre: subCat.genre, 
-                                    menuCategoryId: category.id 
+                                  setEditingSubCat({
+                                    id: subCat.id,
+                                    name: subCat.name,
+                                    genre: subCat.genre,
+                                    menuCategoryId: category.id
                                   })
                                   setShowSubCatModal(true)
                                 }} className="text-[#9C7C5C] hover:text-[#0A0A0A] text-xs uppercase font-bold mr-3">Modifier</button>
@@ -3464,7 +3437,7 @@ export default function Home() {
               <div className="bg-white p-6 shadow-sm mb-8">
                 <h3 className="font-display text-lg text-[#0A0A0A] mb-4" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Images du Méga-Menu</h3>
                 <p className="text-sm text-[#6B6560] mb-6">Ajoutez des images pour chaque sous-catégorie. Ces images apparaîtront dans le menu intelligent au survol.</p>
-                
+
                 {menuCategories.map((category) => (
                   <div key={category.id} className="mb-8 last:mb-0">
                     <h4 className="text-sm uppercase tracking-widest text-[#9C7C5C] mb-4 font-bold">{category.name}</h4>
@@ -3478,7 +3451,7 @@ export default function Home() {
                             </div>
                             <span className="text-xs bg-[#EDE8E1] px-2 py-1 rounded">{subCat.images?.length || 0} image(s)</span>
                           </div>
-                          
+
                           {/* Images existantes */}
                           <div className="grid grid-cols-3 gap-2 mb-3">
                             {subCat.images?.map((img) => (
@@ -3496,7 +3469,7 @@ export default function Home() {
                               </div>
                             ))}
                           </div>
-                          
+
                           {/* Ajouter image */}
                           <label className="flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[#6B6560] cursor-pointer hover:border-[#9C7C5C] transition-colors">
                             <svg className="w-4 h-4 text-[#6B6560]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" /></svg>
@@ -3646,7 +3619,7 @@ export default function Home() {
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
               </div>
-              
+
               {/* Details Section */}
               <div className="p-8">
                 <div className="mb-6">
@@ -3668,7 +3641,7 @@ export default function Home() {
                 </div>
 
                 <p className="text-[#6B6560] mb-8">{currentProduct.description}</p>
-                
+
                 {/* Color Swatches */}
                 {currentProduct.colors && currentProduct.colors.length > 0 && (
                   <div className="mb-6">
@@ -3687,7 +3660,7 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                
+
                 {/* Size Selection */}
                 <div className="mb-8">
                   <label className="block text-xs tracking-widest uppercase text-[#0A0A0A] mb-3">Pointure / Taille</label>
@@ -3711,7 +3684,7 @@ export default function Home() {
                     })}
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <button className="btn-primary" onClick={() => {
                     if (!selectedSize) { alert('Veuillez sélectionner une taille'); return }
@@ -3828,7 +3801,7 @@ export default function Home() {
                 <h2 className="font-display text-2xl" style={{ fontFamily: "'Cormorant Garamond', serif" }}>{editingProduct ? 'Modifier le produit' : 'Ajouter un produit'}</h2>
                 <button onClick={closeProductForm} className="text-[#6B6560] hover:text-[#0A0A0A]"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12"/></svg></button>
               </div>
-              
+
               <form onSubmit={handleProductSubmit}>
                 {/* Type Selector */}
                 <div className="mb-6">
@@ -3848,7 +3821,7 @@ export default function Home() {
                     }} className={`flex-1 p-4 border transition-colors ${formType === 'accessoire' ? 'bg-[#0A0A0A] text-[#C4A77D] border-[#0A0A0A]' : 'border-[#6B6560] text-[#6B6560] hover:border-[#0A0A0A]'}`}>Accessoire</button>
                   </div>
                 </div>
-                
+
                 {/* Genre Selector */}
                 <div className="mb-6">
                   <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-3">Genre</label>
@@ -3864,9 +3837,9 @@ export default function Home() {
                   <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-3">Badges & Visibilité</label>
                   <div className="flex flex-wrap gap-4">
                     <label className="flex items-center gap-3 cursor-pointer p-3 border border-[#E5E0DA] hover:border-[#9C7C5C] transition-colors">
-                      <input 
-                        type="checkbox" 
-                        checked={formData.isNew} 
+                      <input
+                        type="checkbox"
+                        checked={formData.isNew}
                         onChange={(e) => setFormData(prev => ({ ...prev, isNew: e.target.checked }))}
                         className="w-5 h-5 accent-[#9C7C5C]"
                       />
@@ -3876,9 +3849,9 @@ export default function Home() {
                       </div>
                     </label>
                     <label className="flex items-center gap-3 cursor-pointer p-3 border border-[#E5E0DA] hover:border-[#9C7C5C] transition-colors">
-                      <input 
-                        type="checkbox" 
-                        checked={formData.isBestSeller} 
+                      <input
+                        type="checkbox"
+                        checked={formData.isBestSeller}
                         onChange={(e) => setFormData(prev => ({ ...prev, isBestSeller: e.target.checked }))}
                         className="w-5 h-5 accent-[#9C7C5C]"
                       />
@@ -3955,11 +3928,11 @@ export default function Home() {
                             </div>
                             <div className="flex gap-2">
                               <button type="button" onClick={() => {
-                                setNewColor({ 
-                                  colorName: color.colorName, 
-                                  colorValue: color.colorValue, 
-                                  images: [...(color.images || [])], 
-                                  sizes: color.sizes?.map(s => ({ ...s })) || [] 
+                                setNewColor({
+                                  colorName: color.colorName,
+                                  colorValue: color.colorValue,
+                                  images: [...(color.images || [])],
+                                  sizes: color.sizes?.map(s => ({ ...s })) || []
                                 })
                                 setEditingColorIndex(idx)
                               }} className="text-[#9C7C5C] hover:text-[#0A0A0A] text-xs uppercase tracking-wider px-2 py-1 border border-[#9C7C5C] hover:border-[#0A0A0A]">Modifier</button>
@@ -3975,16 +3948,16 @@ export default function Home() {
                   {newColor && (
                     <div className="mb-4 p-4 bg-white border border-[#E5E0DA]">
                       <h4 className="text-sm font-bold text-[#0A0A0A] mb-3">{editingColorIndex >= 0 ? 'Modifier la couleur' : 'Nouvelle couleur'}</h4>
-                      
+
                       {/* Ligne 1: Color Picker + Hex + Nom */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         {/* Color Picker Natif */}
                         <div>
                           <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-2">Couleur *</label>
                           <div className="flex items-center gap-2">
-                            <input 
-                              type="color" 
-                              value={newColor.colorValue || '#8B7355'} 
+                            <input
+                              type="color"
+                              value={newColor.colorValue || '#8B7355'}
                               onChange={(e) => {
                                 setNewColor(prev => prev ? { ...prev, colorValue: e.target.value } : null)
                               }}
@@ -3993,13 +3966,13 @@ export default function Home() {
                             <span className="text-xs text-[#6B6560]">Cliquez pour choisir</span>
                           </div>
                         </div>
-                        
+
                         {/* Code Hex */}
                         <div>
                           <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-2">Code Hex</label>
-                          <input 
-                            type="text" 
-                            value={newColor.colorValue || ''} 
+                          <input
+                            type="text"
+                            value={newColor.colorValue || ''}
                             onChange={(e) => {
                               let hex = e.target.value
                               if (!hex.startsWith('#')) hex = '#' + hex
@@ -4011,25 +3984,25 @@ export default function Home() {
                             className="w-full p-2 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C] font-mono text-sm uppercase"
                           />
                         </div>
-                        
+
                         {/* Nom de la couleur */}
                         <div>
                           <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-2">Nom de la couleur *</label>
-                          <input 
-                            type="text" 
-                            value={newColor.colorName || ''} 
+                          <input
+                            type="text"
+                            value={newColor.colorName || ''}
                             onChange={(e) => setNewColor(prev => prev ? { ...prev, colorName: e.target.value } : null)}
                             placeholder="Ex: Noir, Marron, Beige..."
                             className="w-full p-2 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
                           />
                         </div>
                       </div>
-                      
+
                       {/* Aperçu de la couleur */}
                       {newColor.colorValue && (
                         <div className="mb-4 flex items-center gap-3 p-3 bg-[#F8F6F3] border border-[#E5E0DA]">
-                          <span 
-                            className="w-8 h-8 rounded-full border-2 border-[#E5E0DA]" 
+                          <span
+                            className="w-8 h-8 rounded-full border-2 border-[#E5E0DA]"
                             style={{ backgroundColor: newColor.colorValue }}
                           />
                           <span className="text-sm">
@@ -4099,12 +4072,12 @@ export default function Home() {
                           if (editingColorIndex < 0 && formData.colors.some(c => c.colorValue === newColor.colorValue)) { showToast("Erreur", "Cette couleur existe déjà", "error"); return }
                           const totalStock = newColor.sizes.reduce((sum, s) => sum + s.stock, 0)
                           if (totalStock === 0) { showToast("Erreur", "Veuillez définir le stock pour au moins une taille", "error"); return }
-                          
+
                           if (editingColorIndex >= 0) {
                             // Update existing color
                             setFormData(prev => ({
                               ...prev,
-                              colors: prev.colors.map((c, i) => i === editingColorIndex 
+                              colors: prev.colors.map((c, i) => i === editingColorIndex
                                 ? { ...c, colorName: newColor.colorName, colorValue: newColor.colorValue, images: newColor.images, sizes: newColor.sizes }
                                 : c
                               )
@@ -4139,7 +4112,7 @@ export default function Home() {
         </div>,
         document.body
       )}
-      
+
       {/* Sub Category Modal */}
       {mounted && showSubCatModal && createPortal(
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={() => setShowSubCatModal(false)}>
@@ -4152,38 +4125,38 @@ export default function Home() {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
-            
+
             <form onSubmit={async (e) => {
               e.preventDefault()
               if (!editingSubCat.name.trim()) {
                 showToast("Erreur", "Le nom est requis", "error")
                 return
               }
-              
+
               try {
                 let res
                 if (editingSubCat.id) {
                   res = await fetch('/api/subcategories', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                      id: editingSubCat.id, 
-                      name: editingSubCat.name, 
-                      genre: editingSubCat.genre 
+                    body: JSON.stringify({
+                      id: editingSubCat.id,
+                      name: editingSubCat.name,
+                      genre: editingSubCat.genre
                     })
                   })
                 } else {
                   res = await fetch('/api/subcategories', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                      name: editingSubCat.name, 
-                      menuCategoryId: editingSubCat.menuCategoryId, 
-                      genre: editingSubCat.genre 
+                    body: JSON.stringify({
+                      name: editingSubCat.name,
+                      menuCategoryId: editingSubCat.menuCategoryId,
+                      genre: editingSubCat.genre
                     })
                   })
                 }
-                
+
                 if (res.ok) {
                   const menuRes = await fetch('/api/menu')
                   if (menuRes.ok) setMenuCategories(await menuRes.json())
@@ -4199,21 +4172,21 @@ export default function Home() {
               {/* Nom */}
               <div className="mb-4">
                 <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-2">Nom *</label>
-                <input 
-                  type="text" 
-                  value={editingSubCat.name} 
+                <input
+                  type="text"
+                  value={editingSubCat.name}
                   onChange={(e) => setEditingSubCat(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
                   placeholder="Ex: Mules, Sandales, Sacs..."
                   autoFocus
                 />
               </div>
-              
+
               {/* Catégorie parente */}
               <div className="mb-4">
                 <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-2">Catégorie parente</label>
-                <select 
-                  value={editingSubCat.menuCategoryId} 
+                <select
+                  value={editingSubCat.menuCategoryId}
                   onChange={(e) => setEditingSubCat(prev => ({ ...prev, menuCategoryId: e.target.value }))}
                   className="w-full p-3 border border-[#E5E0DA] focus:outline-none focus:border-[#9C7C5C]"
                   disabled={!!editingSubCat.id}
@@ -4223,7 +4196,7 @@ export default function Home() {
                   ))}
                 </select>
               </div>
-              
+
               {/* Genre */}
               <div className="mb-6">
                 <label className="block text-xs uppercase tracking-widest text-[#6B6560] mb-2">Genre</label>
@@ -4239,8 +4212,8 @@ export default function Home() {
                       type="button"
                       onClick={() => setEditingSubCat(prev => ({ ...prev, genre: option.value }))}
                       className={`py-2 px-2 text-xs uppercase tracking-wider border transition-colors ${
-                        editingSubCat.genre === option.value 
-                          ? option.color === 'pink' ? 'bg-pink-100 border-pink-500 text-pink-800' 
+                        editingSubCat.genre === option.value
+                          ? option.color === 'pink' ? 'bg-pink-100 border-pink-500 text-pink-800'
                             : option.color === 'blue' ? 'bg-blue-100 border-blue-500 text-blue-800'
                             : option.color === 'purple' ? 'bg-purple-100 border-purple-500 text-purple-800'
                             : 'bg-[#0A0A0A] text-[#F8F6F3] border-[#0A0A0A]'
@@ -4252,7 +4225,7 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-              
+
               {/* Boutons */}
               <div className="flex gap-4">
                 <button type="button" onClick={() => setShowSubCatModal(false)} className="btn-outline-dark flex-1">Annuler</button>
@@ -4263,10 +4236,10 @@ export default function Home() {
         </div>,
         document.body
       )}
-      
+
       {/* Auth Modal */}
       {mounted && createPortal(authModalContent, document.body)}
-      
+
       {/* Checkout Modal */}
       {showCheckoutModal && mounted && createPortal(
         <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4">
@@ -4281,7 +4254,7 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            
+
             <div className="p-6">
               <div className="flex mb-8">
                 {['info', 'shipping', 'payment'].map((step, idx) => (
@@ -4332,7 +4305,7 @@ export default function Home() {
         </div>,
         document.body
       )}
-            
+
       {/* Phone Number Modal for Payment */}
       {showPhoneModal && createPortal(
         <div className="fixed inset-0 bg-black/50 z-[350] flex items-center justify-center p-4" onClick={() => setShowPhoneModal(false)}>
@@ -4386,7 +4359,7 @@ export default function Home() {
         </div>,
         document.body
       )}
-      
+
       {/* Toast Notifications */}
       {mounted && toasts.length > 0 && createPortal(
         <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2">
