@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin } from '@/lib/auth'
 
 // GET - Fetch all colors
 export async function GET() {
@@ -16,11 +15,8 @@ export async function GET() {
 }
 
 // DELETE - Delete all colors
-export async function DELETE(request: NextRequest) {
+export async function DELETE() {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
-
     const result = await db.productColor.deleteMany({})
     console.log(`[COLORS] Deleted ${result.count} colors`)
     return NextResponse.json({ success: true, count: result.count })

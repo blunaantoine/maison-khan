@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin } from '@/lib/auth'
+import { getAuthUser } from '@/lib/auth'
 
-// POST - Create a hero slide's DELETE
+async function authorizeAdmin(request: NextRequest) {
+  const user = await getAuthUser(request)
+  if (!user || user.role !== 'admin') return null
+  return user
+}
+
+// DELETE - Delete a hero slide
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const { id } = await params
     

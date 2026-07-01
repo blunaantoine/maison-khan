@@ -6,16 +6,8 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('🔧 Création des comptes admin et manager...\n')
 
-  const adminPasswordRaw = process.env.SEED_ADMIN_PASSWORD
-  const managerPasswordRaw = process.env.SEED_MANAGER_PASSWORD
-
-  if (!adminPasswordRaw || !managerPasswordRaw) {
-    console.error('❌ Variables SEED_ADMIN_PASSWORD et SEED_MANAGER_PASSWORD requises')
-    console.error('   Ex: SEED_ADMIN_PASSWORD=xxx SEED_MANAGER_PASSWORD=xxx bun prisma/seed-admin.ts')
-    process.exit(1)
-  }
-
-  const adminPassword = await bcrypt.hash(adminPasswordRaw, 12)
+  // Créer l'admin
+  const adminPassword = await bcrypt.hash('Khan1975@@', 10)
   const admin = await prisma.user.upsert({
     where: { email: 'technique@maison-khan.com' },
     update: {
@@ -34,7 +26,8 @@ async function main() {
   })
   console.log(`✅ Admin créé: ${admin.email}`)
 
-  const managerPassword = await bcrypt.hash(managerPasswordRaw, 12)
+  // Créer le manager
+  const managerPassword = await bcrypt.hash('Manager2024@@', 10)
   const manager = await prisma.user.upsert({
     where: { email: 'manager@maisonkhan.com' },
     update: {
@@ -53,7 +46,16 @@ async function main() {
   })
   console.log(`✅ Manager créé: ${manager.email}`)
 
-  console.log('\n📋 Comptes créés avec les mots de passe fournis via variables d\'environnement.')
+  console.log('\n📋 Comptes créés:')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('Admin:')
+  console.log('  Email: technique@maison-khan.com')
+  console.log('  Mot de passe: Khan1975@@')
+  console.log('')
+  console.log('Manager:')
+  console.log('  Email: manager@maisonkhan.com')
+  console.log('  Mot de passe: Manager2024@@')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 }
 
 main()

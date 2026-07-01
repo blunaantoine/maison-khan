@@ -1,7 +1,13 @@
 // API Products - Simplified with ProductColor (image + color)
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin } from '@/lib/auth'
+import { getAuthUser } from '@/lib/auth'
+
+async function authorizeAdmin(request: NextRequest) {
+  const user = await getAuthUser(request)
+  if (!user || user.role !== 'admin') return null
+  return user
+}
 
 // GET - Fetch all products with colors
 export async function GET() {
@@ -57,8 +63,8 @@ export async function GET() {
 // POST - Create a new product with colors
 export async function POST(request: NextRequest) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const body = await request.json()
     const { name, description, category, subCategory, genre, image, sizes, type, isBestSeller, isNew, colors } = body
@@ -145,8 +151,8 @@ export async function POST(request: NextRequest) {
 // PUT - Update a product with colors
 export async function PUT(request: NextRequest) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const body = await request.json()
     const { id, name, description, category, subCategory, genre, image, sizes, type, isActive, isBestSeller, isNew, colors } = body
@@ -237,8 +243,8 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete a product
 export async function DELETE(request: NextRequest) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

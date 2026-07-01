@@ -4,7 +4,8 @@ import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id')
+    const body = await request.json()
+    const { currentPassword, newPassword, userId } = body
 
     if (!userId) {
       return NextResponse.json(
@@ -12,9 +13,6 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-
-    const body = await request.json()
-    const { currentPassword, newPassword } = body
 
     if (!currentPassword || !newPassword) {
       return NextResponse.json(

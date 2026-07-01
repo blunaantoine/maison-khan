@@ -123,7 +123,47 @@ export async function middleware(req: NextRequest) {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // 3. User-only routes — require authenticated customer
+  // 3. Admin-only write routes (products, slides, content, settings, menu, subcategories, variants)
+  //    These are not under /api/admin/ but need admin protection on writes.
+  // ──────────────────────────────────────────────────────────────
+  const isAdminWriteRoute =
+    (pathname === '/api/products' && method !== 'GET') ||
+    (pathname === '/api/slides' && method !== 'GET') ||
+    (pathname === '/api/content' && method !== 'GET') ||
+    (pathname === '/api/menu' && method !== 'GET') ||
+    (pathname === '/api/subcategories' && method !== 'GET') ||
+    (pathname === '/api/variants' && method !== 'GET') ||
+    pathname.startsWith('/api/settings/')
+
+  if (isAdminWriteRoute) {
+    const token = readSessionCookie(req)
+    const session = await verifySession(token)
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Authentification requise' },
+        { status: 401 }
+      )
+    }
+
+    if (session.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Accès réservé aux administrateurs' },
+        { status: 403 }
+      )
+    }
+
+    const requestHeaders = new Headers(req.headers)
+    requestHeaders.set('x-auth-user-id', session.sub)
+    requestHeaders.set('x-auth-role', session.role)
+    requestHeaders.set('x-auth-email', session.email)
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 4. User-only routes — require authenticated customer
   // ──────────────────────────────────────────────────────────────
   const isUserRoute =
     pathname.startsWith('/api/cart') ||
@@ -163,5 +203,13 @@ export const config = {
     '/api/cart/:path*',
     '/api/addresses/:path*',
     '/api/orders',
+    '/api/products',
+    '/api/slides',
+    '/api/slides/:path*',
+    '/api/content',
+    '/api/menu',
+    '/api/subcategories',
+    '/api/variants',
+    '/api/settings/:path*',
   ],
 }

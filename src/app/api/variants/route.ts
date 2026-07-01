@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin } from '@/lib/auth'
+import { getAuthUser } from '@/lib/auth'
+
+async function authorizeAdmin(request: NextRequest) {
+  const user = await getAuthUser(request)
+  if (!user || user.role !== 'admin') return null
+  return user
+}
 
 // GET - Fetch all variants for a product
 export async function GET(request: Request) {
@@ -31,8 +37,8 @@ export async function GET(request: Request) {
 // POST - Create a new variant
 export async function POST(request: NextRequest) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const body = await request.json()
     const { productId, colorName, colorValue, price, stock, images } = body
@@ -77,8 +83,8 @@ export async function POST(request: NextRequest) {
 // PUT - Update a variant
 export async function PUT(request: NextRequest) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const body = await request.json()
     const { id, colorName, colorValue, price, stock, images, isActive } = body
@@ -105,8 +111,8 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete a variant
 export async function DELETE(request: NextRequest) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

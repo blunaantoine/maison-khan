@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin } from '@/lib/auth'
+import { getAuthUser } from '@/lib/auth'
+
+async function authorizeAdmin(request: NextRequest) {
+  const user = await getAuthUser(request)
+  if (!user || user.role !== 'admin') return null
+  return user
+}
 
 // GET - Fetch all hero slides
 export async function GET() {
@@ -20,8 +26,8 @@ export async function GET() {
 // POST - Create a new hero slide
 export async function POST(request: NextRequest) {
   try {
-    const adminCheck = await requireAdmin(request)
-    if (adminCheck) return adminCheck
+    const admin = await authorizeAdmin(request)
+    if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
     const body = await request.json()
     const { image, type, title, subtitle, link, interval } = body

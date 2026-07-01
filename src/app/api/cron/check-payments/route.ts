@@ -1,124 +1,102 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-const PAYDUNYA_MASTER_KEY  = process.env.PAYDUNYA_MASTER_KEY || ''
-const PAYDUNYA_PRIVATE_KEY = process.env.PAYDUNYA_PRIVATE_KEY || ''
-const PAYDUNYA_TOKEN = process.env.PAYDUNYA_TOKEN || ''
-const PAYDUNYA_MODE = process.env.PAYDUNYA_MODE || 'test'
-const CRON_SECRET = process.env.CRON_SECRET || ''
-
-const PAYDUNYA_BASE_URL =
-  PAYDUNYA_MODE === 'live'
-    ? 'https://app.paydunya.com/api/v1'
-    : 'https://app.paydunya.com/sandbox-api/v1'
-
 export async function GET(request: NextRequest) {
-  const secret = request.headers.get('x-cron-secret')
-  if (CRON_SECRET && secret !== CRON_SECRET) {
-    return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 
-  const startTime = Date.now()
-
-  let checked = 0, success = 0, failed = 0, errors = 0
-
   try {
-    // cmd qui st en pending depuis plus de 35 min...
-    const expiredAt = new Date(Date.now() - 35 * 60 * 1000)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
 
     const pendingPayments = await db.payment.findMany({
       where: {
         status: 'pending',
-        createdAt: { lt: expiredAt }
+        paymentMethod: 'fedapay',
+        createdAt: { gte: twoHoursAgo }
       },
-      include: { order: true },
-      take: 50
+      include: { order: true }
     })
 
+    const results = {
+      checked: 0,
+      success: 0,
+      failed: 0,
+      stillPending: 0,
+      errors: 0
+    }
+
+    const { FedaPay, Transaction } = require('fedapay')
+    FedaPay.setApiKey(process.env.FEDAPAY_SECRET_KEY)
+    FedaPay.setEnvironment('live')
+
     for (const payment of pendingPayments) {
-      checked++
+      results.checked++
+
       try {
-        const res = await fetch(
-          `${PAYDUNYA_BASE_URL}/checkout-invoice/confirm/${payment.transactionId}`,
-          {
-            headers: {
-              'PAYDUNYA-MASTER-KEY': PAYDUNYA_MASTER_KEY,
-              'PAYDUNYA-PRIVATE-KEY': PAYDUNYA_PRIVATE_KEY,
-              'PAYDUNYA-TOKEN': PAYDUNYA_TOKEN
-            }
-          }
-        )
-        const invoice = await res.json()
-        if (invoice.status === 'completed' && payment.status !== 'completed') {
+        const trx = await Transaction.retrieve(Number(payment.transactionId))
+        const status = trx.status // 'approved' | 'pending' | 'declined' | 'canceled'
 
-          await db.$transaction(async (tx) => {
-            await tx.payment.update({
+        if (status === 'approved') {
+          await db.$transaction([
+            db.payment.update({
               where: { id: payment.id },
-              data: { status: 'completed', paidAt: new Date() }
-            })
-            await tx.order.update({
+              data: {
+                status: 'success',
+                paidAt: new Date(),
+                metadata: JSON.stringify({ fedapayStatus: status, transactionId: payment.transactionId })
+              }
+            }),
+            db.order.update({
               where: { id: payment.orderId },
-              data: { paymentStatus: 'paid', status: 'paid' }
+              data: {
+                paymentStatus: 'paid',
+                status: 'paid'
+              }
             })
-          })
-          success++
+          ])
+          results.success++
 
-        } else if (invoice.status === 'cancelled' || invoice.status === 'failed' || invoice.response_code === '4004') {
-          
-          await db.payment.update({
-            where: { id: payment.id },
-            data: { status: 'cancelled' }
-          })
-          await db.order.update({
-            where: { id: payment.orderId },
-            data: { paymentStatus: 'cancelled', status: 'cancelled' }
-          })
-          failed++
+        } else if (status === 'pending') {
+          results.stillPending++
+
+        } else {
+          // declined, cancelled, refunded, etc.
+          await db.$transaction([
+            db.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: 'failed',
+                errorMessage: `Statut FedaPay: ${status}`,
+                metadata: JSON.stringify({ fedapayStatus: status, transactionId: payment.transactionId })
+              }
+            }),
+            db.order.update({
+              where: { id: payment.orderId },
+              data: {
+                paymentStatus: 'failed',
+                status: 'payment_failed'
+              }
+            })
+          ])
+          results.failed++
         }
-      } catch (e) {
-        errors++
-        console.error(`[Cron] Erreur pour payment ${payment.id}:`, e)
+
+      } catch (err) {
+        console.error(`Erreur check paiement FedaPay ${payment.transactionId}:`, err)
+        results.errors++
       }
     }
 
-    const duration = Date.now() - startTime
-
-    await db.cronLog.create({
-      data: {
-        taskName: 'check-payments',
-        status: errors > 0 ? 'partial' : 'success',
-        checked,
-        success,
-        failed,
-        errors,
-        duration
-      }
-    })
-
     return NextResponse.json({
       success: true,
-      checked,
-      successCount: success,
-      failed,
-      errors,
-      duration
+      results,
+      timestamp: new Date().toISOString()
     })
 
   } catch (error) {
-    console.error('[Cron] Erreur fatale:', error)
-    await db.cronLog.create({
-      data: {
-        taskName: 'check-payments',
-        status: 'error',
-        checked,
-        success,
-        failed,
-        errors: errors + 1,
-        duration: Date.now() - startTime,
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }
-    })
-
-    return NextResponse.json({ error: 'Erreur cron' }, { status: 500 })
+    console.error('Cron check-fedapay error:', error)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

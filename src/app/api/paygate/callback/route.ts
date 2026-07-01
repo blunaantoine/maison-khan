@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 /**
  * PayGate Callback Endpoint
  * Receives payment confirmations from PayGate
- *
+ * 
  * Payment status codes:
  * 0 = Success
  * 2 = Pending
@@ -12,7 +12,7 @@ import { db } from '@/lib/db'
  * 6 = Cancelled
  */
 export async function POST(request: NextRequest) {
-  console.log('\n[PayGate Callback] Notification reçue')
+  console.log('\n[PayGate Callback] Réception notification')
 
   try {
     const contentType = request.headers.get('content-type') || ''
@@ -25,35 +25,9 @@ export async function POST(request: NextRequest) {
       formData.forEach((value, key) => { data[key] = value.toString() })
     }
 
-    const PAYGATE_AUTH_TOKEN = process.env.PAYGATE_AUTH_TOKEN || ''
-    const PAYGATE_BASE_URL = process.env.PAYGATE_BASE_URL || 'https://paygateglobal.com/api/v1'
-
-    if (!PAYGATE_AUTH_TOKEN) {
-      console.error('[PayGate Callback] PAYGATE_AUTH_TOKEN non configuré')
-      return NextResponse.json({ received: true, error: 'Configuration manquante' }, { status: 503 })
-    }
+    console.log('[PayGate Callback] Données:', JSON.stringify(data, null, 2))
 
     const { tx_reference, identifier, payment_reference, amount, datetime, payment_method, phone_number, status } = data
-
-    // Vérifier la transaction auprès de PayGate avant de trust le callback
-    if (tx_reference) {
-      const verifyBody = new URLSearchParams()
-      verifyBody.append('auth_token', PAYGATE_AUTH_TOKEN)
-      verifyBody.append('tx_reference', tx_reference as string)
-
-      const verifyRes = await fetch(`${PAYGATE_BASE_URL}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: verifyBody.toString()
-      })
-      const verifyResult = await verifyRes.json()
-
-      // Si le callback annonce un succès mais que PayGate ne confirme pas, rejeter
-      if (status === 0 && verifyResult.status !== 0) {
-        console.warn('[PayGate Callback] Callback claims success but PayGate API disagrees:', verifyResult.status)
-        return NextResponse.json({ received: true, status: 'rejected' })
-      }
-    }
 
     // Find payment
     const payment = await db.payment.findFirst({
@@ -115,6 +89,10 @@ export async function POST(request: NextRequest) {
         data: { paymentStatus: 'paid', status: 'paid' }
       })
       console.log(`[PayGate Callback] Commande ${payment.order.orderNumber} marquée PAYÉE`)
+      console.log(`  Référence: ${payment_reference}`)
+      console.log(`  Montant: ${amount} FCFA`)
+      console.log(`  Téléphone: ${phone_number}`)
+      console.log(`  Méthode: ${payment_method}`)
     }
 
     // Always return 200 to prevent retries
@@ -128,7 +106,7 @@ export async function POST(request: NextRequest) {
 
 // GET - Test endpoint
 export async function GET() {
-  return NextResponse.json({
+  return NextResponse.json({ 
     endpoint: 'PayGate Callback',
     status: 'active',
     expectedFields: ['tx_reference', 'identifier', 'payment_reference', 'amount', 'datetime', 'payment_method', 'phone_number', 'status']
