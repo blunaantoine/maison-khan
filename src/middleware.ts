@@ -133,7 +133,7 @@ export async function middleware(req: NextRequest) {
     (pathname === '/api/menu' && method !== 'GET') ||
     (pathname === '/api/subcategories' && method !== 'GET') ||
     (pathname === '/api/variants' && method !== 'GET') ||
-    pathname.startsWith('/api/settings/')
+    pathname.startsWith('/api/settings/') && method !== 'GET'
 
   if (isAdminWriteRoute) {
     const token = readSessionCookie(req)
@@ -166,7 +166,7 @@ export async function middleware(req: NextRequest) {
   // 4. User-only routes — require authenticated customer
   // ──────────────────────────────────────────────────────────────
   const isUserRoute =
-    pathname.startsWith('/api/cart') ||
+    (pathname.startsWith('/api/cart') && method !== 'GET') ||
     pathname.startsWith('/api/addresses') ||
     (pathname === '/api/orders' && method === 'GET')
 

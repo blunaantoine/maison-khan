@@ -2087,6 +2087,35 @@ export default function Home() {
             <p className={`text-xs ${stockClass} border border-current px-2 py-0.5 rounded-full`}>{stockLabel}</p>
           </div>
         </div>
+        <div className="product-card-actions">
+          <button
+            className="btn-card-panier"
+            onClick={(e) => {
+              e.stopPropagation()
+              addToCart(product, product.sizes ? product.sizes.split(',')[0].trim() : '', '', '', product.minPrice || 0)
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+            Ajouter au panier
+          </button>
+          <button
+            className="btn-card-commander"
+            onClick={(e) => {
+              e.stopPropagation()
+              setDirectOrder({
+                product: product,
+                size: product.sizes ? product.sizes.split(',')[0].trim() : '',
+                colorName: '',
+                colorValue: '',
+                price: product.minPrice || 0,
+                quantity: 1
+              })
+              openCheckout()
+            }}
+          >
+            Commander directement
+          </button>
+        </div>
       </article>
     )
   }
@@ -2949,9 +2978,7 @@ export default function Home() {
                               <div className="mt-4 flex flex-col sm:flex-row gap-3">
                                 {order.status === 'payment_failed' && (
                                   <button
-                                    onClick={() => {
-                                      onClick={() => handlePayDunya(order.id)}
-                                    }}
+                                    onClick={() => handlePayDunya(order.id)}
                                     className="flex-1 bg-[#1a7a4a] text-white py-3 px-4 text-sm uppercase tracking-wider hover:bg-[#155f39] transition-colors flex items-center justify-center gap-2"
                                   >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
