@@ -393,3 +393,71 @@ export async function PUT(request: NextRequest) {
     )
   }
 }
+
+// DELETE - Delete order (user can delete own failed/cancelled orders, admin can delete any)
+export async function DELETE(request: NextRequest) {
+  try {
+    const role = request.headers.get('x-auth-role')
+    const userId = request.headers.get('x-auth-user-id')
+    const isAdmin = role === 'admin' || role === 'manager'
+    const body = await request.json()
+    const { id } = body
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID commande requis' },
+        { status: 400 }
+      )
+    }
+
+    // Find the order first
+    const order = await db.order.findUnique({
+      where: { id },
+      include: { items: true, payments: true }
+    })
+
+    if (!order) {
+      return NextResponse.json(
+        { error: 'Commande introuvable' },
+        { status: 404 }
+      )
+    }
+
+    // Check permissions: user can only delete their own failed/cancelled orders
+    if (!isAdmin) {
+      if (order.userId !== userId) {
+        return NextResponse.json(
+          { error: 'Non autorisé' },
+          { status: 403 }
+        )
+      }
+      if (!['payment_failed', 'cancelled'].includes(order.status)) {
+        return NextResponse.json(
+          { error: 'Seules les commandes échouées ou annulées peuvent être supprimées' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Delete related payments first
+    if (order.payments && order.payments.length > 0) {
+      await db.payment.deleteMany({ where: { orderId: id } })
+    }
+
+    // Delete related order items
+    await db.orderItem.deleteMany({ where: { orderId: id } })
+
+    // Delete the order
+    await db.order.delete({ where: { id } })
+
+    return NextResponse.json({
+      message: 'Commande supprimée avec succès'
+    })
+  } catch (error) {
+    console.error('Delete order error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression de la commande' },
+      { status: 500 }
+    )
+  }
+}
