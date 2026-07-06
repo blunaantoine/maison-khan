@@ -1733,6 +1733,10 @@ export default function Home() {
   }
 
   const removeFromCart = (index: number) => setCart(prev => prev.filter((_, i) => i !== index))
+  const updateCartQty = (index: number, newQty: number) => {
+    if (newQty < 1) { removeFromCart(index); return }
+    setCart(prev => prev.map((item, i) => i === index ? { ...item, qty: newQty } : item))
+  }
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0)
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0)
 
@@ -3768,7 +3772,12 @@ export default function Home() {
                     {cart.map((item, index) => (
                       <div key={index} className="flex justify-between items-center border-b border-[#6B6560]/10 pb-3">
                         <div><p className="font-display text-lg text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>{item.name}</p><p className="text-xs text-[#6B6560]">Taille: {item.size}{item.colorName ? ` | Couleur: ${item.colorName}` : ''} | {formatPrice(item.price)}</p></div>
-                        <div className="flex items-center gap-3"><span className="text-sm font-bold">{item.qty}x</span><button onClick={() => removeFromCart(index)} className="text-red-500 hover:text-red-700 text-xs uppercase tracking-wider">Suppr.</button></div>
+                        <div className="flex items-center gap-2">
+                        <button onClick={() => updateCartQty(index, item.qty - 1)} className="w-7 h-7 border border-[#E5E0DA] flex items-center justify-center text-sm hover:bg-[#EDE8E1] transition-colors">−</button>
+                        <span className="text-sm font-bold w-6 text-center">{item.qty}</span>
+                        <button onClick={() => updateCartQty(index, item.qty + 1)} className="w-7 h-7 border border-[#E5E0DA] flex items-center justify-center text-sm hover:bg-[#EDE8E1] transition-colors">+</button>
+                        <button onClick={() => removeFromCart(index)} className="text-red-500 hover:text-red-700 text-xs uppercase tracking-wider ml-1">Suppr.</button>
+                      </div>
                       </div>
                     ))}
                   </div>
