@@ -1008,9 +1008,21 @@ export default function Home() {
     setCheckoutStep('info')
   }
 
-  // Set mounted on client side
+  // Set mounted on client side + load cart from localStorage
   useEffect(() => {
     setMounted(true)
+    // Load cart from localStorage (synced from product detail page)
+    try {
+      const stored = localStorage.getItem('mk_cart')
+      if (stored) {
+        const items = JSON.parse(stored)
+        if (Array.isArray(items) && items.length > 0) {
+          setCart(items)
+          setShowCartModal(true)
+          localStorage.removeItem('mk_cart')
+        }
+      }
+    } catch {}
   }, [])
 
   // Admin Users State
@@ -2086,35 +2098,6 @@ export default function Home() {
             </p>
             <p className={`text-xs ${stockClass} border border-current px-2 py-0.5 rounded-full`}>{stockLabel}</p>
           </div>
-        </div>
-        <div className="product-card-actions">
-          <button
-            className="btn-card-panier"
-            onClick={(e) => {
-              e.stopPropagation()
-              addToCart(product, product.sizes ? product.sizes.split(',')[0].trim() : '', '', '', product.minPrice || 0)
-            }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
-            Ajouter au panier
-          </button>
-          <button
-            className="btn-card-commander"
-            onClick={(e) => {
-              e.stopPropagation()
-              setDirectOrder({
-                product: product,
-                size: product.sizes ? product.sizes.split(',')[0].trim() : '',
-                colorName: '',
-                colorValue: '',
-                price: product.minPrice || 0,
-                quantity: 1
-              })
-              openCheckout()
-            }}
-          >
-            Commander directement
-          </button>
         </div>
       </article>
     )

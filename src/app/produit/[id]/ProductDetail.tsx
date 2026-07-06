@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
   ShoppingBag,
@@ -23,15 +22,14 @@ interface ProductDetailProps {
 }
 
 export default function ProductDetail({ product }: ProductDetailProps) {
-  const router = useRouter();
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
-  const [addingToCart, setAddingToCart] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
+  const [ordering, setOrdering] = useState(false);
 
   const selectedColor: ProductColor | undefined = product.colors?.[selectedColorIndex];
   const currentImages = selectedColor?.images?.length ? selectedColor.images : [product.image];
@@ -92,31 +90,83 @@ export default function ProductDetail({ product }: ProductDetailProps) {
     );
   };
 
-  const handleAddToCart = async () => {
+  const handleAddToCart = () => {
     if (!selectedSize) return;
-    setAddingToCart(true);
+    // Save to localStorage for the main page cart
+    const cartItem = {
+      id: product.id,
+      name: product.name,
+      price: currentPrice,
+      size: selectedSize,
+      color: selectedColor?.colorValue || '',
+      colorName: selectedColor?.colorName || '',
+      qty: quantity,
+      image: currentImages[selectedImageIndex] || product.image,
+    };
+    const existing = JSON.parse(localStorage.getItem('mk_cart') || '[]');
+    const idx = existing.findIndex(
+      (i: typeof cartItem) => i.id === cartItem.id && i.size === cartItem.size && i.color === cartItem.color
+    );
+    if (idx >= 0) {
+      existing[idx].qty += cartItem.qty;
+    } else {
+      existing.push(cartItem);
+    }
+    localStorage.setItem('mk_cart', JSON.stringify(existing));
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 3000);
+  };
+
+  const handleDirectOrder = async () => {
+    if (!selectedSize || currentStock === 0) return;
+    setOrdering(true);
     try {
-      const res = await fetch('/api/cart', {
+      // 1) Create order
+      const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
-          productId: product.id,
-          quantity,
-          size: selectedSize,
-          colorValue: selectedColor?.colorValue || '',
+          items: [{
+            productId: product.id,
+            productName: product.name,
+            productImage: currentImages[selectedImageIndex] || product.image,
+            colorName: selectedColor?.colorName || null,
+            size: selectedSize,
+            quantity,
+            unitPrice: currentPrice,
+          }],
+          customerInfo: { email: '', phone: '', firstName: '', lastName: '' },
+          shippingAddress: { city: null, address: null, country: 'Togo', phone: '', latitude: null, longitude: null },
+          subtotal: currentPrice * quantity,
+          shippingCost: 0,
+          total: currentPrice * quantity,
+          paymentMethod: 'paydunya',
         }),
       });
-      if (res.ok) {
-        setAddedToCart(true);
-        setTimeout(() => setAddedToCart(false), 3000);
-        // Rediriger vers l'accueil avec le panier ouvert
-        router.push('/?openCart=1');
+      const orderData = await orderRes.json();
+      if (!orderRes.ok || !orderData.order?.id) {
+        alert(orderData.error || 'Erreur lors de la création de la commande');
+        return;
       }
+
+      // 2) Init PayDunya payment
+      const payRes = await fetch('/api/paydunya-psr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderData.order.id }),
+      });
+      const payData = await payRes.json();
+      if (!payRes.ok || !payData.success || !payData.url) {
+        alert(payData.error || 'Impossible d\'initialiser le paiement');
+        return;
+      }
+
+      // 3) Redirect to PayDunya
+      window.location.href = payData.url;
     } catch (err) {
-      console.error('Erreur ajout panier:', err);
+      alert('Erreur : ' + (err instanceof Error ? err.message : 'Erreur inconnue'));
     } finally {
-      setAddingToCart(false);
+      setOrdering(false);
     }
   };
 
@@ -420,12 +470,10 @@ export default function ProductDetail({ product }: ProductDetailProps) {
             <div className="flex flex-col gap-3 mb-8">
               <button
                 onClick={handleAddToCart}
-                disabled={!selectedSize || currentStock === 0 || addingToCart}
+                disabled={!selectedSize || currentStock === 0}
                 className="w-full py-4 bg-[#0A0A0A] text-[#F8F6F3] text-xs tracking-[0.2em] uppercase hover:bg-[#2C2C2A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
               >
-                {addingToCart ? (
-                  <>Ajout en cours...</>
-                ) : addedToCart ? (
+                {addedToCart ? (
                   <>
                     <Check className="w-4 h-4" />
                     Ajouté au panier
@@ -434,6 +482,21 @@ export default function ProductDetail({ product }: ProductDetailProps) {
                   <>
                     <ShoppingBag className="w-4 h-4" />
                     Ajouter au panier
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleDirectOrder}
+                disabled={!selectedSize || currentStock === 0 || ordering || currentPrice === 0}
+                className="w-full py-4 bg-[#9C7C5C] text-[#F8F6F3] text-xs tracking-[0.2em] uppercase hover:bg-[#8B6B4B] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              >
+                {ordering ? (
+                  <>Redirection vers le paiement...</>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                    Commander directement
                   </>
                 )}
               </button>
