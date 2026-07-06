@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// Generate order number
+// Generate unique order number with timestamp to avoid collisions
 const generateOrderNumber = async () => {
   const year = new Date().getFullYear()
-  const count = await db.order.count({
-    where: {
-      createdAt: {
-        gte: new Date(`${year}-01-01`),
-        lt: new Date(`${year + 1}-01-01`)
-      }
-    }
-  })
-  return `MK-${year}-${String(count + 1).padStart(4, '0')}`
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const timePart = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0')
+  const rand = Math.floor(Math.random() * 100).toString().padStart(2, '0')
+  return `MK-${year}${month}${day}-${timePart}${rand}`
 }
 
 // GET - Get orders
@@ -267,46 +264,66 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const orderNumber = await generateOrderNumber()
-
-    const order = await db.order.create({
-      data: {
-        orderNumber,
-        userId: validUserId,  // <-- UTILISEZ validUserId ICI
-        customerEmail: customerInfo.email,
-        customerPhone: customerInfo.phone,
-        customerFirstName: customerInfo.firstName || null,
-        customerLastName: customerInfo.lastName || null,
-        shippingAddress: shippingAddress?.address || null,
-        shippingCity: shippingAddress?.city || null,
-        shippingCountry: shippingAddress?.country || 'Togo',
-        shippingPhone: shippingAddress?.phone || customerInfo.phone,
-        shippingLatitude: shippingAddress?.latitude ? parseFloat(shippingAddress.latitude.toString()) : null,
-        shippingLongitude: shippingAddress?.longitude ? parseFloat(shippingAddress.longitude.toString()) : null,
-        subtotal: subtotal || 0,
-        shippingCost: shippingCost || 0,
-        discount: 0,
-        total: total || 0,
-        status: 'pending',
-        paymentStatus: 'pending',
-        paymentMethod: paymentMethod || null,
-        items: {
-          create: items.map((item: Record<string, unknown>) => ({
-            productId: item.productId as string || null,
-            productName: item.productName as string || item.name as string,
-            productImage: item.productImage as string || item.image as string || null,
-            colorName: item.colorName as string || null,
-            size: item.size as string,
-            quantity: item.quantity as number,
-            unitPrice: item.unitPrice as number || item.price as number,
-            totalPrice: (item.unitPrice as number || item.price as number) * (item.quantity as number)
-          }))
+    // Create order with retry on duplicate orderNumber (P2002)
+    let order
+    const maxRetries = 3
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const orderNumber = await generateOrderNumber()
+      try {
+        order = await db.order.create({
+          data: {
+            orderNumber,
+            userId: validUserId,
+            customerEmail: customerInfo.email,
+            customerPhone: customerInfo.phone,
+            customerFirstName: customerInfo.firstName || null,
+            customerLastName: customerInfo.lastName || null,
+            shippingAddress: shippingAddress?.address || null,
+            shippingCity: shippingAddress?.city || null,
+            shippingCountry: shippingAddress?.country || 'Togo',
+            shippingPhone: shippingAddress?.phone || customerInfo.phone,
+            shippingLatitude: shippingAddress?.latitude ? parseFloat(shippingAddress.latitude.toString()) : null,
+            shippingLongitude: shippingAddress?.longitude ? parseFloat(shippingAddress.longitude.toString()) : null,
+            subtotal: subtotal || 0,
+            shippingCost: shippingCost || 0,
+            discount: 0,
+            total: total || 0,
+            status: 'pending',
+            paymentStatus: 'pending',
+            paymentMethod: paymentMethod || null,
+            items: {
+              create: items.map((item: Record<string, unknown>) => ({
+                productId: item.productId as string || null,
+                productName: item.productName as string || item.name as string,
+                productImage: item.productImage as string || item.image as string || null,
+                colorName: item.colorName as string || null,
+                size: item.size as string,
+                quantity: item.quantity as number,
+                unitPrice: item.unitPrice as number || item.price as number,
+                totalPrice: (item.unitPrice as number || item.price as number) * (item.quantity as number)
+              }))
+            }
+          },
+          include: {
+            items: true
+          }
+        })
+        break // success, exit retry loop
+      } catch (createError: any) {
+        if (createError.code === 'P2002' && attempt < maxRetries - 1) {
+          // Unique constraint failed on orderNumber, retry with new number
+          continue
         }
-      },
-      include: {
-        items: true
+        throw createError
       }
-    })
+    }
+
+    if (!order) {
+      return NextResponse.json(
+        { error: 'Erreur lors de la création de la commande' },
+        { status: 500 }
+      )
+    }
 
     if (validUserId) {
       await db.cartItem.deleteMany({ where: { userId: validUserId } })
