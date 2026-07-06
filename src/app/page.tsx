@@ -1008,11 +1008,21 @@ export default function Home() {
     setCheckoutStep('info')
   }
 
-  // Set mounted on client side + load cart from localStorage
+  // Set mounted on client side + load cart/direct order from localStorage
   useEffect(() => {
     setMounted(true)
-    // Load cart from localStorage (synced from product detail page)
     try {
+      // Load direct order from product detail page
+      const storedOrder = localStorage.getItem('mk_direct_order')
+      if (storedOrder) {
+        const data = JSON.parse(storedOrder)
+        if (data?.product) {
+          setDirectOrder(data as any)
+          localStorage.removeItem('mk_direct_order')
+          openCheckout()
+        }
+      }
+      // Load cart from localStorage (synced from product detail page)
       const stored = localStorage.getItem('mk_cart')
       if (stored) {
         const items = JSON.parse(stored)
