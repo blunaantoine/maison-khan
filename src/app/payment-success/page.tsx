@@ -63,13 +63,13 @@ function PaymentSuccessContent() {
 
           <Link
 
-            href="/orders"
+            href="/?order_success=1"
 
             className="block w-full py-3 bg-[#1A4D8C] text-white text-sm uppercase tracking-wider hover:bg-[#163c70] transition-colors"
 
           >
 
-            Voir mes commandes
+            Retour à l'accueil
 
           </Link>
 
