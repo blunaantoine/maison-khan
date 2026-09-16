@@ -1880,8 +1880,10 @@ export default function Home() {
     }))
   }
 
-  // ✨ IA : analyse la première image de la couleur en cours d'édition
-  // et pré-remplit le formulaire (couleur, nom, description, catégorie, tailles)
+  // ✨ IA : analyse la première image de la couleur (variante) en cours d'édition
+  // et remplit automatiquement : la couleur de l'article (nom + teinte exacte)
+  // et la description du produit (uniquement si elle est encore vide).
+  // Les autres champs (nom, catégorie, type, genre, tailles, prix) restent manuels.
   const handleAiAnalyze = async () => {
     if (!newColor || !newColor.images || newColor.images.length === 0) {
       showToast("Erreur", "Ajoutez d'abord au moins une photo de l'article", "error")
@@ -1907,27 +1909,17 @@ export default function Home() {
         return
       }
 
-      const a = data.analysis as {
-        name: string; description: string; category: string; type: 'chaussure' | 'accessoire';
-        genre: 'femme' | 'homme' | 'mixte'; colorName: string; colorValue: string; suggestedSizes: string[]
-      }
+      const a = data.analysis as { description: string; colorName: string; colorValue: string }
 
-      // 1. Couleur détectée → toujours appliquée au formulaire de couleur en cours
+      // 1. Couleur de l'article → toujours appliquée à la variante (couleur) en cours
       setNewColor(prev => prev ? { ...prev, colorName: a.colorName, colorValue: a.colorValue } : null)
 
-      // 2. Champs produit → appliqués seulement s'ils sont encore vides (on n'écrase pas la saisie)
-      setFormData(prev => ({
-        ...prev,
-        name: prev.name.trim() === '' ? a.name : prev.name,
-        description: prev.description.trim() === '' ? a.description : prev.description,
-        category: prev.category === '' ? a.category : prev.category,
-        type: a.type,
-        genre: a.genre,
-        sizes: prev.sizes.length === 0 ? a.suggestedSizes : prev.sizes
-      }))
-      if (a.type !== formType) setFormType(a.type)
+      // 2. Description → remplie uniquement si elle est encore vide (on n'écrase jamais la saisie)
+      if (a.description) {
+        setFormData(prev => prev.description.trim() === '' ? { ...prev, description: a.description } : prev)
+      }
 
-      showToast("Analyse terminée ✨", `Couleur "${a.colorName}" détectée — formulaire pré-rempli, vérifiez et ajustez`)
+      showToast("Analyse terminée ✨", `Couleur « ${a.colorName} » (${a.colorValue}) détectée — couleur et description remplies`)
     } catch (err) {
       console.error('AI analyze error:', err)
       showToast("Erreur", "Impossible de contacter l'assistant IA", "error")
@@ -3960,6 +3952,13 @@ export default function Home() {
           </div>
           <div className="border-t border-[#6B6560]/20 pt-8">
             <p className="text-[#6B6560] text-xs">© {new Date().getFullYear()} MAISON KHAN. Tous droits réservés.</p>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('mk:open-cookie-settings'))}
+              className="mt-2 text-[#6B6560] hover:text-[#9C7C5C] text-xs underline underline-offset-4 transition-colors"
+            >
+              Cookies &amp; confidentialité
+            </button>
           </div>
         </div>
       </footer>
@@ -4395,7 +4394,7 @@ export default function Home() {
                               <span aria-hidden="true">✨</span> Assistant IA
                             </p>
                             <p className="text-xs text-[#6B6560] mt-1">
-                              L'IA analyse la première photo : elle détecte la <strong>couleur</strong> (nom + teinte exacte) et propose nom, description, catégorie et tailles. Les champs déjà remplis ne sont pas modifiés.
+                              L'IA analyse la première photo et remplit la <strong>couleur de l'article</strong> (nom + teinte exacte) ainsi que la <strong>description</strong> si elle est vide. Répétez l'analyse pour chaque couleur ajoutée — les autres champs restent à votre saisie.
                             </p>
                           </div>
                           <button

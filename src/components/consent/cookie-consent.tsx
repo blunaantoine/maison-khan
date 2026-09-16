@@ -10,7 +10,10 @@
  * - Après acceptation avec notifications : encart discret "Restez informé·e"
  *   (fond crème, bordure bronze) pour activer les notifications navigateur —
  *   la permission n'est JAMAIS demandée sans clic explicite.
- * - Bouton flottant 🍪 en bas à gauche pour rouvrir les réglages à tout moment.
+ * - Une fois le choix enregistré (accepté OU refusé), la bannière disparaît
+ *   définitivement — aucun bouton résiduel. Les réglages restent accessibles
+ *   via le lien « Cookies & confidentialité » du pied de page, qui émet
+ *   l'événement window `mk:open-cookie-settings`.
  *
  * Hydratation : le composant rend `null` jusqu'à l'hydratation client terminée
  * (hook `useMounted` via useSyncExternalStore — sans setState dans un effet),
@@ -103,32 +106,6 @@ function ConsentToggle({ checked, onChange, disabled = false, label }: ConsentTo
         ].join(' ')}
       />
     </button>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Icône cookie (SVG inline, style lucide — aucune dépendance)               */
-/* -------------------------------------------------------------------------- */
-
-function CookieIcon() {
-  return (
-    <svg
-      className="w-5 h-5"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5" />
-      <path d="M8.5 8.5v.01" />
-      <path d="M16 15.5v.01" />
-      <path d="M12 12v.01" />
-      <path d="M11 17v.01" />
-      <path d="M7 14v.01" />
-    </svg>
   );
 }
 
@@ -240,6 +217,18 @@ export default function CookieConsent() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showCustomize]);
 
+  /* --- Lien « Cookies & confidentialité » du pied de page : ouvrir les réglages --- */
+  useEffect(() => {
+    const openFromFooter = () => {
+      // Repartir des choix réellement enregistrés
+      setAnalyticsChoice(getConsent()?.analytics ?? false);
+      setNotificationsChoice(getConsent()?.notifications ?? false);
+      setShowCustomize(true);
+    };
+    window.addEventListener('mk:open-cookie-settings', openFromFooter);
+    return () => window.removeEventListener('mk:open-cookie-settings', openFromFooter);
+  }, []);
+
   /** Clic sur "Plus tard" : mémoriser le refus pour ne plus déranger. */
   const handleNotifLater = () => {
     try {
@@ -272,7 +261,6 @@ export default function CookieConsent() {
   if (!mounted) return null;
 
   const bannerVisible = consent === null;
-  const floatingButtonVisible = consent !== null && !showNotifPrompt && !showCustomize;
 
   return (
     <>
@@ -373,7 +361,7 @@ export default function CookieConsent() {
 
               <p className="text-sm text-[#6B6560] leading-relaxed mb-2">
                 Choisissez ce que vous autorisez. Vous pourrez modifier ces réglages
-                à tout moment via le bouton 🍪 en bas de page.
+                à tout moment via le lien « Cookies &amp; confidentialité » en pied de page.
               </p>
 
               {/* Réglages */}
@@ -491,20 +479,6 @@ export default function CookieConsent() {
         </section>
       )}
 
-      {/* ============ BOUTON FLOTTANT DE RÉGLAGES 🍪 ============ */}
-      {floatingButtonVisible && (
-        <button
-          type="button"
-          onClick={(event) => openCustomize(event.currentTarget)}
-          aria-label="Réglages des cookies"
-          title="Réglages des cookies"
-          /* En dev, le badge Next.js occupe le coin bas-gauche : on se place
-             juste au-dessus pour rester cliquable. En prod : bottom-4 (spec). */
-          className={`fixed ${process.env.NODE_ENV === 'development' ? 'bottom-16' : 'bottom-4'} left-4 z-[80] w-10 h-10 rounded-full flex items-center justify-center bg-[#0A0A0A] text-[#C4A77D] shadow-lg transition-colors duration-300 hover:bg-[#9C7C5C] hover:text-[#F8F6F3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C]`}
-        >
-          <CookieIcon />
-        </button>
-      )}
     </>
   );
 }
