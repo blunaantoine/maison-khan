@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Outfit } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import CookieConsent from "@/components/consent/cookie-consent";
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-display",
@@ -133,6 +134,7 @@ export default function RootLayout({
       >
         {children}
         <Toaster />
+        <CookieConsent />
       </body>
     </html>
   );

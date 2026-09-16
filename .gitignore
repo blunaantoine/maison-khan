@@ -50,3 +50,17 @@ prompt
 server.log
 # Skills directory
 /skills/
+# Base de données SQLite (JAMAIS de données clients dans le dépôt !)
+*.db
+*.db.backup
+*.db-journal
+
+# Dossiers plateforme sandbox (non liés au projet)
+/tests/
+/examples/
+/download/
+/upload/
+/mini-services/
+/skills/
+/worklog.md
+*.pid

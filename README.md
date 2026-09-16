@@ -43,6 +43,32 @@ MAISON KHAN est une marque de chaussures et accessoires de luxe, confectionnés 
 - **Tailwind CSS** - Styling
 - **Prisma** - ORM SQLite
 - **PayGate** - Paiement Mobile Money
+- **IA de vision (z-ai-web-dev-sdk)** - Analyse automatique des photos produits
+
+## ✨ Nouveautés
+
+### 🤖 Assistant IA — Ajout de produit accéléré
+Dans le formulaire d'ajout de produit, après avoir chargé la photo d'un article
+(dans le formulaire de couleur), cliquez sur **« ✨ Analyser la photo »** :
+l'IA détecte automatiquement la **couleur** (nom français + teinte hex exacte),
+et propose un **nom**, une **description**, la **catégorie**, le **genre** et les
+**tailles** adaptées. Les champs déjà remplis ne sont jamais écrasés.
+
+### 🍪 Consentement cookies & notifications navigateur
+Bannière de consentement (tout accepter / personnaliser / refuser) avec réglages
+modifiables à tout moment via le bouton flottant 🍪. Si l'utilisateur accepte les
+notifications, il peut activer les alertes navigateur de **suivi de commande**
+(confirmée, expédiée, livrée…).
+
+### 🩺 Endpoint de santé /api/health
+Pour être prévenu **avant** vos clients d'une panne, configurez un monitoring
+gratuit (UptimeRobot) sur `https://shop.maison-khan.com/api/health`
+(200 = tout va bien, 503 = problème détecté).
+
+### 🔒 Sécurité renforcée
+- Rate limiting sur la connexion (anti brute-force)
+- Suppression du mot de passe admin codé en dur dans le client
+- Mots de passe du seed via variables d'environnement (`SEED_ADMIN_PASSWORD`)
 
 ## 📦 Installation
 

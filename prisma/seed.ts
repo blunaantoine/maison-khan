@@ -11,7 +11,18 @@ async function main() {
   // ============================================
   console.log('👤 Création des comptes administrateurs...')
 
-  const adminPassword = await bcrypt.hash('Khan1975@@', 10)
+  // ⚠️ SÉCURITÉ : les mots de passe sont fournis via variables d'environnement.
+  // Si absentes, un mot de passe temporaire est utilisé → À CHANGER IMMÉDIATEMENT
+  // (l'ancien mot de passe par défaut est exposé dans l'historique public du dépôt).
+  const adminPasswordRaw = process.env.SEED_ADMIN_PASSWORD || 'Khan1975@@'
+  const managerPasswordRaw = process.env.SEED_MANAGER_PASSWORD || 'Manager2024@@'
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    console.warn('  ⚠️  SEED_ADMIN_PASSWORD non définie → mot de passe par DÉFAUT utilisé (exposé publiquement !)')
+    console.warn('  ⚠️  Changez-le immédiatement après connexion, ou relancez avec :')
+    console.warn('      SEED_ADMIN_PASSWORD=xxx SEED_MANAGER_PASSWORD=xxx bun prisma/seed.ts')
+  }
+
+  const adminPassword = await bcrypt.hash(adminPasswordRaw, 10)
   const admin = await prisma.user.upsert({
     where: { email: 'technique@maison-khan.com' },
     update: {
@@ -30,7 +41,7 @@ async function main() {
   })
   console.log(`  ✅ Admin: ${admin.email}`)
 
-  const managerPassword = await bcrypt.hash('Manager2024@@', 10)
+  const managerPassword = await bcrypt.hash(managerPasswordRaw, 10)
   const manager = await prisma.user.upsert({
     where: { email: 'manager@maisonkhan.com' },
     update: {
@@ -197,13 +208,9 @@ async function main() {
   console.log('\n✅ Initialisation terminée avec succès!')
   console.log('\n📋 Comptes créés:')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('Admin:')
-  console.log('  Email: technique@maison-khan.com')
-  console.log('  Mot de passe: Khan1975@@')
-  console.log('')
-  console.log('Manager:')
-  console.log('  Email: manager@maisonkhan.com')
-  console.log('  Mot de passe: Manager2024@@')
+  console.log('Admin:    technique@maison-khan.com')
+  console.log('Manager:  manager@maisonkhan.com')
+  console.log('(Mots de passe : ceux fournis via SEED_ADMIN_PASSWORD / SEED_MANAGER_PASSWORD)')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 }
 

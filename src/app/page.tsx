@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import { getConsent } from '@/lib/consent'
+import { sendBrowserNotification } from '@/components/consent/notifications'
 
 // DÉBUT FEDAPAY TYPE DECLARATION
 declare global {
@@ -941,10 +943,8 @@ export default function Home() {
   const [megaMenuGenre, setMegaMenuGenre] = useState<'homme' | 'femme' | 'mixte'>('femme')
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null)
   const [currentSlide, setCurrentSlide] = useState(0)
-  const [isAdmin, setIsAdmin] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [showCartModal, setShowCartModal] = useState(false)
-  const [showAdminModal, setShowAdminModal] = useState(false)
   const [showProductFormModal, setShowProductFormModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [headerScrolled, setHeaderScrolled] = useState(false)
@@ -954,7 +954,6 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [videoMuted, setVideoMuted] = useState(true)
   const [videoPlaying, setVideoPlaying] = useState(true)
-  const [adminPassword, setAdminPassword] = useState('')
   const [adminTab, setAdminTab] = useState<'products' | 'orders' | 'users' | 'settings'>('products')
   const [adminOrders, setAdminOrders] = useState<Order[]>([])
   const [adminOrderFilter, setAdminOrderFilter] = useState<string>('all')
@@ -1053,6 +1052,9 @@ export default function Home() {
   
   // Index of color being edited (-1 = new color, >= 0 = editing existing)
   const [editingColorIndex, setEditingColorIndex] = useState<number>(-1)
+
+  // IA : analyse d'image produit (pré-remplissage du formulaire)
+  const [aiAnalyzing, setAiAnalyzing] = useState(false)
   
   // Subcategory modal state
   const [showSubCatModal, setShowSubCatModal] = useState(false)
@@ -1178,6 +1180,59 @@ export default function Home() {
       fetchUserAddresses()
     }
   }, [showUserDashboard, user?.id])
+
+  // 🔔 Notifications de suivi de commande (si consentement cookies accordé)
+  // Polling léger toutes les 60 s : notifie le client quand le statut d'une
+  // de ses commandes change (confirmée, expédiée, livrée…)
+  const previousOrderStatuses = useRef<Record<string, string> | null>(null)
+  useEffect(() => {
+    if (!user?.id) {
+      previousOrderStatuses.current = null
+      return
+    }
+
+    const checkOrderUpdates = async () => {
+      try {
+        const consent = getConsent()
+        if (!consent?.notifications) return
+
+        const res = await fetch('/api/orders', {
+          headers: { 'x-user-id': user.id }
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        const orders: Array<{ id: string; orderNumber: string; status: string }> = data.orders || []
+
+        const snapshot: Record<string, string> = {}
+        orders.forEach(o => { snapshot[o.id] = o.status })
+
+        const prev = previousOrderStatuses.current
+        if (prev) {
+          for (const o of orders) {
+            const oldStatus = prev[o.id]
+            if (oldStatus && oldStatus !== o.status) {
+              const labels: Record<string, string> = {
+                pending: 'En attente', confirmed: 'Confirmée', processing: 'En préparation',
+                shipped: 'Expédiée', delivered: 'Livrée', cancelled: 'Annulée'
+              }
+              sendBrowserNotification(
+                'MAISON KHAN — Mise à jour de commande',
+                `Votre commande ${o.orderNumber} est maintenant : ${labels[o.status] || o.status}`,
+                { tag: `order-${o.id}` }
+              )
+            }
+          }
+        }
+        previousOrderStatuses.current = snapshot
+      } catch {
+        // silencieux : le polling ne doit jamais casser l'UI
+      }
+    }
+
+    checkOrderUpdates()
+    const interval = setInterval(checkOrderUpdates, 60_000)
+    return () => clearInterval(interval)
+  }, [user?.id])
 
   // Fetch admin orders
   const fetchAdminOrders = async () => {
@@ -1823,6 +1878,62 @@ export default function Home() {
       ...prev,
       sizes: prev.sizes.includes(size) ? prev.sizes.filter(s => s !== size) : [...prev.sizes, size]
     }))
+  }
+
+  // ✨ IA : analyse la première image de la couleur en cours d'édition
+  // et pré-remplit le formulaire (couleur, nom, description, catégorie, tailles)
+  const handleAiAnalyze = async () => {
+    if (!newColor || !newColor.images || newColor.images.length === 0) {
+      showToast("Erreur", "Ajoutez d'abord au moins une photo de l'article", "error")
+      return
+    }
+    if (!user?.id) {
+      showToast("Erreur", "Connectez-vous avec un compte administrateur", "error")
+      return
+    }
+
+    setAiAnalyzing(true)
+    showToast("Analyse en cours", "L'IA examine votre photo…")
+    try {
+      const res = await fetch('/api/ai/analyze-product-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+        body: JSON.stringify({ image: newColor.images[0] })
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.analysis) {
+        showToast("Erreur", data.error || "L'analyse a échoué, réessayez", "error")
+        return
+      }
+
+      const a = data.analysis as {
+        name: string; description: string; category: string; type: 'chaussure' | 'accessoire';
+        genre: 'femme' | 'homme' | 'mixte'; colorName: string; colorValue: string; suggestedSizes: string[]
+      }
+
+      // 1. Couleur détectée → toujours appliquée au formulaire de couleur en cours
+      setNewColor(prev => prev ? { ...prev, colorName: a.colorName, colorValue: a.colorValue } : null)
+
+      // 2. Champs produit → appliqués seulement s'ils sont encore vides (on n'écrase pas la saisie)
+      setFormData(prev => ({
+        ...prev,
+        name: prev.name.trim() === '' ? a.name : prev.name,
+        description: prev.description.trim() === '' ? a.description : prev.description,
+        category: prev.category === '' ? a.category : prev.category,
+        type: a.type,
+        genre: a.genre,
+        sizes: prev.sizes.length === 0 ? a.suggestedSizes : prev.sizes
+      }))
+      if (a.type !== formType) setFormType(a.type)
+
+      showToast("Analyse terminée ✨", `Couleur "${a.colorName}" détectée — formulaire pré-rempli, vérifiez et ajustez`)
+    } catch (err) {
+      console.error('AI analyze error:', err)
+      showToast("Erreur", "Impossible de contacter l'assistant IA", "error")
+    } finally {
+      setAiAnalyzing(false)
+    }
   }
 
   // Auth Modal Content
@@ -4029,27 +4140,6 @@ export default function Home() {
         document.body
       )}
 
-      {/* Admin Login Modal */}
-      {mounted && showAdminModal && createPortal(
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={() => { setShowAdminModal(false); setAdminPassword(''); setShowPassword(false) }}>
-          <div className="bg-white w-full max-w-md p-8 text-center" onClick={e => e.stopPropagation()}>
-            <h2 className="font-display text-2xl mb-4" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Administration</h2>
-            <p className="text-[#6B6560] text-sm mb-6">Veuillez entrer le mot de passe pour continuer.</p>
-            <div className="relative mb-4">
-              <input type={showPassword ? "text" : "password"} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="w-full p-3 pr-12 border border-[#E5E0DA] text-center focus:outline-none focus:border-[#9C7C5C]" placeholder="Mot de passe" onKeyDown={(e) => { if (e.key === 'Enter') { if (adminPassword === 'Khan1975@@') { setIsAdmin(true); setShowAdminModal(false); setAdminPassword(''); navigateTo('admin') } else { alert('Mot de passe incorrect.') }}}} />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6560] hover:text-[#0A0A0A] transition-colors">
-                {showPassword ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>}
-              </button>
-            </div>
-            <div className="flex gap-4">
-              <button className="btn-primary flex-1" onClick={() => { if (adminPassword === 'Khan1975@@') { setIsAdmin(true); setShowAdminModal(false); setAdminPassword(''); navigateTo('admin') } else { alert('Mot de passe incorrect.') }}}>Connexion</button>
-              <button onClick={() => { setShowAdminModal(false); setAdminPassword(''); setShowPassword(false) }} className="btn-outline-dark flex-1">Annuler</button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
       {/* Product Form Modal */}
       {mounted && showProductFormModal && createPortal(
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200]" onClick={closeProductForm}>
@@ -4296,6 +4386,38 @@ export default function Home() {
                           ))}
                         </div>
                       )}
+
+                      {/* ✨ Assistant IA — analyse la 1ère photo et pré-remplit le formulaire */}
+                      <div className="mb-4 p-4 border border-dashed border-[#9C7C5C] bg-[#F8F6F3]">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#0A0A0A] flex items-center gap-2">
+                              <span aria-hidden="true">✨</span> Assistant IA
+                            </p>
+                            <p className="text-xs text-[#6B6560] mt-1">
+                              L'IA analyse la première photo : elle détecte la <strong>couleur</strong> (nom + teinte exacte) et propose nom, description, catégorie et tailles. Les champs déjà remplis ne sont pas modifiés.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAiAnalyze}
+                            disabled={aiAnalyzing || !newColor.images || newColor.images.length === 0}
+                            className="px-4 py-3 bg-[#0A0A0A] text-[#C4A77D] text-xs uppercase tracking-wider hover:bg-[#9C7C5C] hover:text-[#F8F6F3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
+                          >
+                            {aiAnalyzing ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Analyse…
+                              </>
+                            ) : (
+                              <>✨ Analyser la photo</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
 
                       {/* Prix et Stock par taille */}
                       <div className="mb-4">

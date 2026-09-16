@@ -161,7 +161,13 @@ export default function PaymentSuccessPage() {
   const token = searchParams.get('token')
   const orderId = searchParams.get('orderId') || searchParams.get('order')
 
-  const [state, setState] = useState<VerifyState>('loading')
+  const [state, setState] = useState<VerifyState>(() =>
+    !searchParams.get('token') &&
+    !searchParams.get('orderId') &&
+    !searchParams.get('order')
+      ? 'error'
+      : 'loading'
+  )
   const [order, setOrder] = useState<OrderData | null>(null)
   const [paidAt, setPaidAt] = useState<string | undefined>()
   const [attempt, setAttempt] = useState(0)
@@ -213,10 +219,7 @@ export default function PaymentSuccessPage() {
   }
 
   useEffect(() => {
-    if (!token && !orderId) {
-      setState('error')
-      return
-    }
+    if (!token && !orderId) return
     verifyPayment(0)
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)

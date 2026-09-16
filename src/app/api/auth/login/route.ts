@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Email et mot de passe requis' },
         { status: 400 }
+      )
+    }
+
+    // Anti brute-force : 8 tentatives par IP + email toutes les 15 minutes
+    const ip = getClientIp(request)
+    const limit = rateLimit(`login:${ip}:${String(email).toLowerCase()}`, 8, 15 * 60 * 1000)
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `Trop de tentatives. Réessayez dans ${Math.ceil(limit.retryAfterSeconds / 60)} minute(s).` },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
       )
     }
 
