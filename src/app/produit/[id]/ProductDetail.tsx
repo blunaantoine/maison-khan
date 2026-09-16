@@ -24,7 +24,10 @@ interface ProductDetailProps {
 export default function ProductDetail({ product }: ProductDetailProps) {
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  // Taille par défaut dérivée du produit dès le montage (sans effet)
+  const [selectedSize, setSelectedSize] = useState<string | null>(
+    product.sizes?.length ? product.sizes[0] : null
+  );
   const [quantity, setQuantity] = useState(1);
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -33,17 +36,13 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   const selectedColor: ProductColor | undefined = product.colors?.[selectedColorIndex];
   const currentImages = selectedColor?.images?.length ? selectedColor.images : [product.image];
 
-  // Reset image index quand on change de couleur
-  useEffect(() => {
+  // Reset image index quand on change de couleur — ajustement pendant le rendu
+  // (pattern React officiel, sans effet ni rendus en cascade)
+  const [prevColorIndex, setPrevColorIndex] = useState(selectedColorIndex);
+  if (prevColorIndex !== selectedColorIndex) {
+    setPrevColorIndex(selectedColorIndex);
     setSelectedImageIndex(0);
-  }, [selectedColorIndex]);
-
-  // Initialiser la taille par défaut
-  useEffect(() => {
-    if (product.sizes?.length && !selectedSize) {
-      setSelectedSize(product.sizes[0]);
-    }
-  }, [product.sizes, selectedSize]);
+  }
 
   // Récupérer le prix de la taille sélectionnée pour la couleur courante
   const getCurrentPrice = (): number => {
@@ -132,18 +131,23 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       quantity,
     };
     localStorage.setItem('mk_direct_order', JSON.stringify(directOrder));
-    window.location.href = '/?checkout=1';
+    window.location.assign('/?checkout=1');
   };
 
   const handleWhatsAppOrder = () => {
     const phone = '22890000000';
-    let text = `Bonjour Maison Khan, je souhaite commander :\n\n`;
-    text += `📦 ${product.name}\n`;
-    if (selectedColor) text += `🎨 Couleur : ${selectedColor.colorName}\n`;
-    if (selectedSize) text += `📏 Taille : ${selectedSize}\n`;
-    text += `🔢 Quantité : ${quantity}\n`;
-    if (currentPrice > 0) text += `💰 Prix unitaire : ${formatPrice(currentPrice)}\n`;
-    text += `\n${shareUrl}`;
+    const lines = [
+      'Bonjour Maison Khan, je souhaite commander :',
+      '',
+      `📦 ${product.name}`,
+      selectedColor ? `🎨 Couleur : ${selectedColor.colorName}` : null,
+      selectedSize ? `📏 Taille : ${selectedSize}` : null,
+      `🔢 Quantité : ${quantity}`,
+      currentPrice > 0 ? `💰 Prix unitaire : ${formatPrice(currentPrice)}` : null,
+      '',
+      shareUrl
+    ].filter((line): line is string => line !== null)
+    const text = lines.join('\n')
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { FedaPay, Transaction } from 'fedapay'
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
@@ -27,7 +28,6 @@ export async function GET(request: NextRequest) {
       errors: 0
     }
 
-    const { FedaPay, Transaction } = require('fedapay')
     FedaPay.setApiKey(process.env.FEDAPAY_SECRET_KEY)
     FedaPay.setEnvironment('live')
 

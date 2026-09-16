@@ -1052,6 +1052,8 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [googleEnabled, setGoogleEnabled] = useState(false)
+  const [aiAnalyzing, setAiAnalyzing] = useState(false)
 
   // Dashboard State
   const [showUserDashboard, setShowUserDashboard] = useState(false)
@@ -1196,6 +1198,21 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     let cancelled = false
+
+    // Connexion Google : disponible sur ce serveur ? (le bouton ne s'affiche que si oui)
+    fetch('/api/auth/google/status')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (data?.configured) setGoogleEnabled(true) })
+      .catch(() => {})
+
+    // Retour de Google : ?auth=google (succès) ou ?auth=error (échec).
+    // On nettoie l'URL immédiatement puis on affichera le toast selon le résultat.
+    const params = new URLSearchParams(window.location.search)
+    const authFlag = params.get('auth')
+    if (authFlag) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
     ;(async () => {
       try {
         const res = await fetch('/api/auth/me', { credentials: 'include' })
@@ -1203,10 +1220,16 @@ export default function Home() {
           const data = await res.json()
           if (!cancelled && data.user) {
             setUser(data.user)
+            if (authFlag === 'google') {
+              showToast('Bienvenue', 'Connexion avec Google réussie')
+            }
           }
         } else {
           // Not authenticated - clear any stale localStorage from old version
           localStorage.removeItem('user')
+          if (authFlag === 'google' || authFlag === 'error') {
+            showToast('Erreur', 'La connexion Google a échoué. Réessayez.', 'error')
+          }
         }
       } catch {
         // Network error - ignore
@@ -1905,6 +1928,52 @@ export default function Home() {
     }))
   }
 
+  // ✨ IA : analyse la première image de la couleur (variante) en cours d'édition
+  // et remplit automatiquement : la couleur de l'article (nom + teinte exacte)
+  // et la description du produit (uniquement si elle est encore vide).
+  // Les autres champs (nom, catégorie, type, genre, tailles, prix) restent manuels.
+  const handleAiAnalyze = async () => {
+    if (!newColor || !newColor.images || newColor.images.length === 0) {
+      showToast("Erreur", "Ajoutez d'abord au moins une photo de l'article", "error")
+      return
+    }
+
+    setAiAnalyzing(true)
+    showToast("Analyse en cours", "L'IA examine votre photo…")
+    try {
+      // Session JWT via cookie HttpOnly — pas de header manuel nécessaire
+      const res = await fetch('/api/ai/analyze-product-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ image: newColor.images[0] })
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.analysis) {
+        showToast("Erreur", data.error || "L'analyse a échoué, réessayez", "error")
+        return
+      }
+
+      const a = data.analysis as { description: string; colorName: string; colorValue: string }
+
+      // 1. Couleur de l'article → toujours appliquée à la variante (couleur) en cours
+      setNewColor(prev => prev ? { ...prev, colorName: a.colorName, colorValue: a.colorValue } : null)
+
+      // 2. Description → remplie uniquement si elle est encore vide (on n'écrase jamais la saisie)
+      if (a.description) {
+        setFormData(prev => prev.description.trim() === '' ? { ...prev, description: a.description } : prev)
+      }
+
+      showToast("Analyse terminée ✨", `Couleur « ${a.colorName} » (${a.colorValue}) détectée — couleur et description remplies`)
+    } catch (err) {
+      console.error('AI analyze error:', err)
+      showToast("Erreur", "Impossible de contacter l'assistant IA", "error")
+    } finally {
+      setAiAnalyzing(false)
+    }
+  }
+
   // Auth Modal Content
   const authModalContent = useMemo(() => {
     if (!showAuthModal) return null
@@ -2007,10 +2076,39 @@ export default function Home() {
             onTogglePassword={() => setShowPassword(!showPassword)}
             forgotPasswordLoading={forgotPasswordLoading}
           />
+
+          {/* Connexion avec Google (affichée uniquement si configurée sur le serveur) */}
+          {googleEnabled && (
+            <>
+              <div className="flex items-center gap-3 mt-5 mb-4" aria-hidden="true">
+                <div className="flex-1 h-px bg-[#E5E0DA]" />
+                <span className="text-[10px] uppercase tracking-[0.25em] text-[#6B6560]">ou</span>
+                <div className="flex-1 h-px bg-[#E5E0DA]" />
+              </div>
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/api/auth/google' }}
+                className="w-full flex items-center justify-center gap-3 p-3 bg-white border border-[#E5E0DA] hover:border-[#9C7C5C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C] transition-colors"
+              >
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 48 48" aria-hidden="true">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                </svg>
+                <span className="text-sm text-[#0A0A0A]">Continuer avec Google</span>
+              </button>
+              <p className="text-[11px] text-[#6B6560] text-center mt-3 leading-relaxed">
+                {authMode === 'login'
+                  ? "Connectez-vous en un clic, sans mot de passe."
+                  : "Pas besoin de mot de passe : votre compte sera créé automatiquement."}
+              </p>
+            </>
+          )}
         </div>
       </div>
     )
-  }, [showAuthModal, authMode, showPassword, forgotPasswordLoading, showToast, setUser, setShowAuthModal, setAuthMode, setShowPassword, setForgotPasswordLoading])
+  }, [showAuthModal, authMode, showPassword, forgotPasswordLoading, googleEnabled, showToast, setUser, setShowAuthModal, setAuthMode, setShowPassword, setForgotPasswordLoading])
 
   // Checkout Modal
   const CheckoutModal = () => {
@@ -3643,6 +3741,13 @@ export default function Home() {
           </div>
           <div className="border-t border-[#6B6560]/20 pt-8">
             <p className="text-[#6B6560] text-xs">© {new Date().getFullYear()} MAISON KHAN. Tous droits réservés.</p>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('mk:open-cookie-settings'))}
+              className="mt-2 text-[#6B6560] hover:text-[#9C7C5C] text-xs underline underline-offset-4 transition-colors"
+            >
+              Cookies &amp; confidentialité
+            </button>
           </div>
         </div>
       </footer>
@@ -4095,6 +4200,38 @@ export default function Home() {
                           ))}
                         </div>
                       )}
+
+                      {/* ✨ Assistant IA — analyse la 1ère photo et remplit couleur + description */}
+                      <div className="mb-4 p-4 border border-dashed border-[#9C7C5C] bg-[#F8F6F3]">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#0A0A0A] flex items-center gap-2">
+                              <span aria-hidden="true">✨</span> Assistant IA
+                            </p>
+                            <p className="text-xs text-[#6B6560] mt-1">
+                              L'IA analyse la première photo et remplit la <strong>couleur de l'article</strong> (nom + teinte exacte) ainsi que la <strong>description</strong> si elle est vide. Répétez l'analyse pour chaque couleur ajoutée — les autres champs restent à votre saisie.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAiAnalyze}
+                            disabled={aiAnalyzing || !newColor.images || newColor.images.length === 0}
+                            className="px-4 py-3 bg-[#0A0A0A] text-[#C4A77D] text-xs uppercase tracking-wider hover:bg-[#9C7C5C] hover:text-[#F8F6F3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
+                          >
+                            {aiAnalyzing ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Analyse…
+                              </>
+                            ) : (
+                              <>✨ Analyser la photo</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
 
                       {/* Prix et Stock par taille */}
                       <div className="mb-4">

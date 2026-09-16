@@ -74,3 +74,12 @@ prisma/db/
 
 *.db-journal
 
+
+# === Fichiers plateforme sandbox (non projet) ===
+download/
+examples/
+tests/
+.zscripts/
+mini-services/
+dev.log
+deploy-history.log
