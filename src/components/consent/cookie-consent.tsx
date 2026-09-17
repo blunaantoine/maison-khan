@@ -442,34 +442,78 @@ export default function CookieConsent() {
           aria-label="Activation des notifications"
           className="fixed bottom-0 inset-x-0 z-[90] p-4"
         >
-          <div className="mx-auto w-full max-w-3xl bg-[#F8F6F3] border border-[#9C7C5C] shadow-2xl animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
-            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="relative mx-auto w-full max-w-2xl bg-[#0A0A0A] text-[#F8F6F3] border border-[#C4A77D]/40 border-t-2 border-t-[#C4A77D] shadow-2xl animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
+            {/* Fermeture discrète */}
+            <button
+              type="button"
+              onClick={handleNotifLater}
+              aria-label="Fermer et activer les notifications plus tard"
+              className="absolute top-2 right-2 z-10 p-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center text-[#F8F6F3]/40 hover:text-[#C4A77D] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C4A77D]"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="p-5 sm:p-6 sm:pl-7 flex flex-col sm:flex-row sm:items-center gap-5">
+              {/* Cloche dans un halo doré pulsant */}
+              <div className="relative shrink-0 mx-auto sm:mx-0">
                 <span
                   aria-hidden="true"
-                  className="w-10 h-10 shrink-0 flex items-center justify-center bg-[#0A0A0A] text-lg"
-                >
-                  🔔
+                  className="absolute -inset-1.5 rounded-full bg-[#C4A77D]/20 animate-ping [animation-duration:3s]"
+                />
+                <span className="relative w-12 h-12 rounded-full border border-[#C4A77D]/70 flex items-center justify-center bg-[#0A0A0A]">
+                  <svg
+                    className="w-5 h-5 text-[#C4A77D]"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.9 5.6a3 3 0 0 0-5.8 0M18 8.5c0 5.5 2 8.5 2 8.5H4s2-3 2-8.5a6 6 0 0 1 12 0Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 20a2 2 0 0 0 3.4 0" />
+                  </svg>
                 </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-[#0A0A0A]">Restez informé·e</p>
-                  <p className="text-xs text-[#6B6560] mt-0.5 leading-relaxed">
-                    Recevez une alerte à chaque étape du suivi de votre commande.
-                  </p>
-                </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+
+              {/* Texte */}
+              <div className="flex-1 min-w-0 text-center sm:text-left">
+                <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-[#C4A77D] mb-1">
+                  Suivi de commande
+                </p>
+                <h3
+                  className="text-xl sm:text-2xl font-light text-[#F8F6F3]"
+                  style={{ fontFamily: "'Cormorant Garamond', serif" }}
+                >
+                  Restez informé·e
+                </h3>
+                <p className="text-xs text-[#F8F6F3]/60 mt-1.5 leading-relaxed">
+                  Une notification discrète à chaque étape de votre commande —
+                  de la confirmation à la livraison.
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col gap-2.5 shrink-0 w-full sm:w-auto sm:min-w-[190px]">
                 <button
                   type="button"
                   onClick={handleEnableNotifications}
-                  className="min-h-[40px] px-6 py-3 bg-[#9C7C5C] text-[#F8F6F3] text-xs font-medium uppercase tracking-widest transition-colors duration-300 hover:bg-[#8B6B4B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C]"
+                  className="min-h-[40px] px-6 py-3 bg-[#C4A77D] text-[#0A0A0A] text-xs font-semibold uppercase tracking-widest transition-colors duration-300 hover:bg-[#D9BC8F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C4A77D]"
                 >
-                  Activer les notifications
+                  Activer
                 </button>
                 <button
                   type="button"
                   onClick={handleNotifLater}
-                  className="min-h-[40px] px-6 py-3 text-[#6B6560] hover:text-[#0A0A0A] text-xs font-medium uppercase tracking-widest transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C]"
+                  className="min-h-[40px] py-2 text-[#F8F6F3]/50 hover:text-[#F8F6F3] text-xs font-medium uppercase tracking-widest underline underline-offset-4 decoration-[#C4A77D]/40 hover:decoration-[#C4A77D] transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C4A77D]"
                 >
                   Plus tard
                 </button>

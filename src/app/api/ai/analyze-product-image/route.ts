@@ -7,7 +7,10 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit'
  *
  * Assistant IA pour le formulaire d'ajout de produit :
  * l'admin uploade la photo d'un article (ou d'une couleur/variante),
- * l'IA Mistral Pixtral (modèle de vision) analyse l'image et renvoie uniquement :
+ * l'IA Mistral Pixtral (modèle de vision) analyse l'image et renvoie :
+ *  - le type de produit (chaussure / accessoire),
+ *  - la catégorie (parmi les vraies sous-catégories de la boutique),
+ *  - le sous-titre / nom de collection,
  *  - la description vendeuse de l'article,
  *  - la couleur de l'article : nom français + code hexadécimal exact.
  *
@@ -17,14 +20,28 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit'
  *  - MISTRAL_VISION_MODEL : modèle de vision, défaut « pixtral-12b-2409 »
  *    (alternatives : « pixtral-large-latest » plus précis, « mistral-small-latest »)
  *
- * Côté client, la description n'est appliquée que si le champ est encore
- * vide ; la couleur (nom + hex) est appliquée à la variante en cours.
- * Les autres champs du formulaire restent à la saisie manuelle.
+ * Côté client : la couleur (nom + hex) est toujours appliquée à la variante
+ * en cours ; le type et la catégorie sont appliqués s'ils sont valides ;
+ * le sous-titre (collection) et la description ne remplissent que les
+ * champs encore vides — la saisie manuelle n'est jamais écrasée.
  *
- * Body : { image: string }  — image en data URL base64 (JPEG/PNG/WebP)
+ * Body : { image: string, categories?: {
+ *   chaussures: Array<{ slug: string; name: string }>,
+ *   accessoires: Array<{ slug: string; name: string }>
+ * } }  — image en data URL base64 (JPEG/PNG/WebP) + la liste des
+ * sous-catégories réelles de la boutique (envoyée par le formulaire)
+ * pour que l'IA choisisse parmi les slugs existants.
  */
 
+interface CategoryHint {
+  slug: string
+  name: string
+}
+
 interface ProductAnalysis {
+  type: string
+  categorySlug: string
+  subCategory: string
   description: string
   colorName: string
   colorValue: string
@@ -56,7 +73,16 @@ function sanitizeAnalysis(raw: ProductAnalysis): ProductAnalysis {
     : '#8B7355'
   const colorName = String(raw.colorName || '').trim().slice(0, 40) || 'Naturel'
 
+  // Type de produit : uniquement « chaussure » ou « accessoire » (sinon vide → non appliqué)
+  const rawType = String(raw.type || '').toLowerCase().trim()
+  const type = rawType === 'chaussure' || rawType === 'accessoire' ? rawType : ''
+
   return {
+    type,
+    // Slug de catégorie : nettoyé (minuscules, tirets), sinon vide → non appliqué
+    categorySlug: String(raw.categorySlug || '').toLowerCase().trim().replace(/\s+/g, '-').slice(0, 60),
+    // Sous-titre (Collection) : texte court et propre
+    subCategory: String(raw.subCategory || '').trim().slice(0, 80),
     description: String(raw.description || '').trim().slice(0, 600),
     colorName,
     colorValue
@@ -85,7 +111,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { image } = body as { image?: string }
+    const { image, categories } = body as {
+      image?: string
+      categories?: { chaussures?: CategoryHint[]; accessoires?: CategoryHint[] }
+    }
 
     if (!image || typeof image !== 'string') {
       return NextResponse.json({ error: 'Image manquante' }, { status: 400 })
@@ -119,15 +148,25 @@ export async function POST(request: NextRequest) {
 
     const model = process.env.MISTRAL_VISION_MODEL?.trim() || 'pixtral-12b-2409'
 
+    // Listes de sous-catégories réelles de la boutique (envoyées par le formulaire)
+    const chaussuresList = (categories?.chaussures ?? []).map(c => `${c.slug} (${c.name})`).join(', ')
+    const accessoiresList = (categories?.accessoires ?? []).map(c => `${c.slug} (${c.name})`).join(', ')
+
     const prompt = `Tu es assistant merchandising pour MAISON KHAN, marque togolaise de chaussures et accessoires de luxe fabriqués artisanalement (cuir, raphia, perles).
 
 Analyse la photo de cet article et renvoie UNIQUEMENT un objet JSON valide (aucun texte autour, pas de markdown) avec ces champs :
 {
+  "type": "chaussure" si l'article est une chaussure (mule, sandale, escarpin, bottine...), sinon "accessoire" (sac, ceinture, bijou, chapeau...),
+  "categorySlug": "le slug de la catégorie la plus adaptée, choisi UNIQUEMENT dans la liste correspondante ci-dessous",
+  "subCategory": "nom de collection court et élégant en français pour le sous-titre du produit (ex: Édition Limitée, Collection Safari, Artisanat d'Exception, Signature Khan)",
   "description": "description vendeuse de 2 à 3 phrases en français, ton luxe/artisanal, mentionnant la matière, la couleur et le style visibles sur la photo",
   "colorName": "nom français de la couleur DOMINANTE de l'article (ex: Noir, Camel, Doré, Terracotta, Ivoire, Bordeaux...)",
   "colorValue": "code hexadécimal approximatif de cette couleur dominante, format #RRGGBB"
 }
+${chaussuresList ? `\nCatégories disponibles si l'article est une chaussure : ${chaussuresList}.` : ''}
+${accessoiresList ? `Catégories disponibles si l'article est un accessoire : ${accessoiresList}.` : ''}
 
+Si aucune liste ne correspond au type détecté, mets "" dans categorySlug.
 Réponds uniquement avec le JSON.`
 
     // Appel à l'API Mistral (format compatible OpenAI, image en data URL base64)

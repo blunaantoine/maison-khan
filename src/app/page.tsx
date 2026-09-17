@@ -1929,9 +1929,10 @@ export default function Home() {
   }
 
   // ✨ IA : analyse la première image de la couleur (variante) en cours d'édition
-  // et remplit automatiquement : la couleur de l'article (nom + teinte exacte)
-  // et la description du produit (uniquement si elle est encore vide).
-  // Les autres champs (nom, catégorie, type, genre, tailles, prix) restent manuels.
+  // et remplit automatiquement : la couleur de l'article (nom + teinte exacte),
+  // le type de produit (chaussure/accessoire), la catégorie (parmi celles de la
+  // boutique), le sous-titre (collection) et la description (si encore vide).
+  // Les prix, tailles, stock et badges restent à la saisie manuelle.
   const handleAiAnalyze = async () => {
     if (!newColor || !newColor.images || newColor.images.length === 0) {
       showToast("Erreur", "Ajoutez d'abord au moins une photo de l'article", "error")
@@ -1941,12 +1942,18 @@ export default function Home() {
     setAiAnalyzing(true)
     showToast("Analyse en cours", "L'IA examine votre photo…")
     try {
+      // On envoie les vraies sous-catégories de la boutique pour que l'IA
+      // choisisse parmi les slugs existants (pas d'inventés)
+      const categories = {
+        chaussures: (menuCategories.find(c => c.slug === 'chaussures')?.subCategories ?? []).map(s => ({ slug: s.slug, name: s.name })),
+        accessoires: (menuCategories.find(c => c.slug === 'accessoires')?.subCategories ?? []).map(s => ({ slug: s.slug, name: s.name }))
+      }
       // Session JWT via cookie HttpOnly — pas de header manuel nécessaire
       const res = await fetch('/api/ai/analyze-product-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ image: newColor.images[0] })
+        body: JSON.stringify({ image: newColor.images[0], categories })
       })
       const data = await res.json()
 
@@ -1955,17 +1962,45 @@ export default function Home() {
         return
       }
 
-      const a = data.analysis as { description: string; colorName: string; colorValue: string }
+      const a = data.analysis as {
+        description: string; colorName: string; colorValue: string
+        type?: string; categorySlug?: string; subCategory?: string
+      }
 
       // 1. Couleur de l'article → toujours appliquée à la variante (couleur) en cours
       setNewColor(prev => prev ? { ...prev, colorName: a.colorName, colorValue: a.colorValue } : null)
 
-      // 2. Description → remplie uniquement si elle est encore vide (on n'écrase jamais la saisie)
+      // 2. Type de produit (chaussure / accessoire) → appliqué s'il est valide
+      const detectedType = a.type === 'chaussure' || a.type === 'accessoire' ? a.type : null
+      if (detectedType && detectedType !== formType) {
+        const defaultCat = menuCategories.find(c => c.slug === (detectedType === 'chaussure' ? 'chaussures' : 'accessoires'))?.subCategories?.[0]?.slug || ''
+        setFormType(detectedType)
+        setFormData(prev => ({ ...prev, type: detectedType, category: defaultCat, sizes: [] }))
+      }
+
+      // 3. Catégorie → appliquée seulement si le slug renvoyé existe vraiment
+      if (detectedType && a.categorySlug) {
+        const slugList = menuCategories.find(c => c.slug === (detectedType === 'chaussure' ? 'chaussures' : 'accessoires'))?.subCategories ?? []
+        const valid = slugList.some(s => s.slug === a.categorySlug)
+        if (valid) setFormData(prev => ({ ...prev, category: a.categorySlug as string }))
+      }
+
+      // 4. Sous-titre (Collection) → rempli uniquement si encore vide (on n'écrase jamais la saisie)
+      if (a.subCategory) {
+        setFormData(prev => prev.subCategory.trim() === '' ? { ...prev, subCategory: a.subCategory as string } : prev)
+      }
+
+      // 5. Description → remplie uniquement si elle est encore vide (on n'écrase jamais la saisie)
       if (a.description) {
         setFormData(prev => prev.description.trim() === '' ? { ...prev, description: a.description } : prev)
       }
 
-      showToast("Analyse terminée ✨", `Couleur « ${a.colorName} » (${a.colorValue}) détectée — couleur et description remplies`)
+      const filled: string[] = [`couleur « ${a.colorName} » (${a.colorValue})`]
+      if (detectedType) filled.push('type')
+      if (a.categorySlug) filled.push('catégorie')
+      if (a.subCategory) filled.push('collection')
+      if (a.description) filled.push('description')
+      showToast("Analyse terminée ✨", `${filled.join(', ')} rempli${filled.length > 1 ? 's' : ''} automatiquement`)
     } catch (err) {
       console.error('AI analyze error:', err)
       showToast("Erreur", "Impossible de contacter l'assistant IA", "error")

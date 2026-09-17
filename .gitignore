@@ -83,3 +83,7 @@ tests/
 mini-services/
 dev.log
 deploy-history.log
+
+# Fichiers temporaires sandbox (uploads utilisateur, sorties d'outils)
+tool-results/
+upload/
