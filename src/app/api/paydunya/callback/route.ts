@@ -194,9 +194,16 @@ export async function POST(request: NextRequest) {
 
     } else if (status === 'cancelled' || status === 'failed') {
 
+      // Statut de commande dans le vocabulaire de l'app :
+      // 'payment_failed' (badge rouge + bouton « Réessayer le paiement » du
+      // tableau de bord client) ou 'cancelled'. L'ancien code écrivait 'failed',
+      // statut inconnu de l'interface → aucun badge ni bouton affiché.
       await db.order.update({
         where: { id: payment.orderId },
-        data: { paymentStatus: status, status: status }
+        data: {
+          paymentStatus: status,
+          status: status === 'failed' ? 'payment_failed' : 'cancelled',
+        },
       })
 
     }

@@ -1,7 +1,7 @@
 
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 
 import { useSearchParams } from 'next/navigation'
 
@@ -14,6 +14,56 @@ function PaymentFailedContent() {
   const searchParams = useSearchParams()
 
   const orderId = searchParams.get('orderId')
+
+  const [retrying, setRetrying] = useState(false)
+
+  const [retryError, setRetryError] = useState<string | null>(null)
+
+
+
+  // Relancer le paiement (même mécanisme que le tableau de bord client)
+
+  const handleRetry = async () => {
+
+    if (!orderId || retrying) return
+
+    setRetrying(true)
+
+    setRetryError(null)
+
+    try {
+
+      const res = await fetch('/api/paydunya-psr', {
+
+        method: 'POST',
+
+        headers: { 'Content-Type': 'application/json' },
+
+        body: JSON.stringify({ orderId }),
+
+      })
+
+      const data = await res.json()
+
+      if (data.success && data.url) {
+
+        window.location.assign(data.url)
+
+        return // la redirection met fin à la page
+
+      }
+
+      setRetryError(data.error || 'Impossible de relancer le paiement.')
+
+    } catch {
+
+      setRetryError('Erreur de connexion. Vérifiez votre réseau et réessayez.')
+
+    }
+
+    setRetrying(false)
+
+  }
 
 
 
@@ -61,6 +111,20 @@ function PaymentFailedContent() {
 
         <div className="space-y-3 pt-2">
 
+          <button
+
+            onClick={handleRetry}
+
+            disabled={retrying}
+
+            className="w-full py-3 bg-[#1a7a4a] text-white text-sm uppercase tracking-wider hover:bg-[#155f39] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+
+          >
+
+            {retrying ? 'Redirection en cours…' : 'Réessayer le paiement'}
+
+          </button>
+
           <Link
 
             href="/"
@@ -74,6 +138,12 @@ function PaymentFailedContent() {
           </Link>
 
         </div>
+
+        {retryError && (
+
+          <p className="text-red-600 text-xs -mb-2">{retryError}</p>
+
+        )}
 
       </div>
 

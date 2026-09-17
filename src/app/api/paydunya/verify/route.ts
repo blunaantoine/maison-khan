@@ -25,19 +25,29 @@ export async function GET(request: NextRequest) {
 
     const payment = await db.payment.findFirst({
       where: token ? { transactionId: token } : { orderId: orderId! },
+      orderBy: { createdAt: 'desc' }, // dernière tentative (les retries créent plusieurs paiements)
       include: { order: { include: { items: true } } },
     })
 
     let liveStatus = payment?.status ?? 'pending'
 
-    if (token) {
+    // Confirmation en direct chez PayDunya : avec le token fourni, OU avec le
+    // token stocké en base (cas du retour boutique où seule l'orderId revient).
+    // Indépendant de l'IPN callback, qui peut arriver plus tard.
+    // Clés absentes (ex. sandbox) → pas de confirmation live possible,
+    // on se contente du statut en base.
+    const confirmToken = (masterKey && privateKey && apiToken)
+      ? (token || payment?.transactionId)
+      : null
+    if (confirmToken) {
       try {
-        const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${token}`, {
+        const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${confirmToken}`, {
           headers: {
             'PAYDUNYA-MASTER-KEY': masterKey,
             'PAYDUNYA-PRIVATE-KEY': privateKey,
             'PAYDUNYA-TOKEN': apiToken,
           },
+          signal: AbortSignal.timeout(10000), // jamais bloquer le retour client > 10 s
         })
         const invoice = await confirmRes.json()
 
@@ -68,6 +78,17 @@ export async function GET(request: NextRequest) {
             await db.payment.update({
               where: { id: payment.id },
               data: { status: liveStatus },
+            })
+          }
+          // Synchroniser aussi la commande pour que le tableau de bord client
+          // affiche le badge et le bouton « Réessayer le paiement ».
+          if (payment && payment.order && payment.order.status === 'pending') {
+            await db.order.update({
+              where: { id: payment.orderId },
+              data: {
+                paymentStatus: liveStatus,
+                status: liveStatus === 'failed' ? 'payment_failed' : 'cancelled',
+              },
             })
           }
         }
