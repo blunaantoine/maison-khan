@@ -4,14 +4,6 @@ import { createHash } from 'crypto'
 import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
 
 const PAYDUNYA_MASTER_KEY  = process.env.PAYDUNYA_MASTER_KEY  || ''
-const PAYDUNYA_PRIVATE_KEY = process.env.PAYDUNYA_PRIVATE_KEY || ''
-const PAYDUNYA_TOKEN = process.env.PAYDUNYA_TOKEN || ''
-const PAYDUNYA_MODE = process.env.PAYDUNYA_MODE || 'test'
-
-const PAYDUNYA_BASE_URL =
-  PAYDUNYA_MODE === 'live'
-    ? 'https://app.paydunya.com/api/v1'
-    : 'https://app.paydunya.com/sandbox-api/v1'
 
 async function decrementStock(orderId: string, orderNumber: string) {
   try {
@@ -106,15 +98,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, error: 'token manquant' })
     }
 
-    const confirmRes = await fetch(`${PAYDUNYA_BASE_URL}/checkout-invoice/confirm/${token}`, {
-      method: 'GET',
-      headers: {
-        'PAYDUNYA-MASTER-KEY': PAYDUNYA_MASTER_KEY,
-        'PAYDUNYA-PRIVATE-KEY': PAYDUNYA_PRIVATE_KEY,
-        'PAYDUNYA-TOKEN': PAYDUNYA_TOKEN
-      }
-    })
-    const invoice = await confirmRes.json()
+    // Le statut de l'IPN (signé par le hash sha512 de la master key) est la
+    // source de vérité. L'ancien code faisait un fetch de confirmation chez
+    // PayDunya dont le résultat n'était jamais utilisé — requête morte qui
+    // pouvait pendre le callback indéfiniment (IPN en timeout chez PayDunya).
     const payment = await db.payment.findFirst({
       where: { transactionId: token },
       include: { order: true }

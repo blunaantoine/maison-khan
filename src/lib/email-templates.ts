@@ -80,10 +80,11 @@ function totalsTable(order: EmailOrder): string {
         <td style="padding:6px 0;color:#6B6560;font-size:14px;">Sous-total</td>
         <td style="padding:6px 0;text-align:right;color:#2C2C2A;font-size:14px;">${fmt(order.subtotal)}</td>
       </tr>
+      ${order.shippingCost > 0 ? `
       <tr>
         <td style="padding:6px 0;color:#6B6560;font-size:14px;">Livraison</td>
-        <td style="padding:6px 0;text-align:right;color:#2C2C2A;font-size:14px;">${order.shippingCost > 0 ? fmt(order.shippingCost) : 'Offerte'}</td>
-      </tr>
+        <td style="padding:6px 0;text-align:right;color:#2C2C2A;font-size:14px;">${fmt(order.shippingCost)}</td>
+      </tr>` : ''}
       <tr>
         <td style="padding:12px 0 0;border-top:2px solid #0A0A0A;color:#0A0A0A;font-size:15px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Total</td>
         <td style="padding:12px 0 0;border-top:2px solid #0A0A0A;text-align:right;color:#9C7C5C;font-size:20px;font-weight:700;font-family:Georgia,serif;">${fmt(order.total)}</td>

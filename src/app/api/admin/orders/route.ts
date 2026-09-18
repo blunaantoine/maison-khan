@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { notifyStatusChanged } from '@/lib/notify'
+import { notifyStatusChanged, notifyPaymentConfirmed } from '@/lib/notify'
 
 /**
  * Defense in depth: the middleware already validated the JWT and checked
@@ -136,10 +136,10 @@ export async function PUT(request: NextRequest) {
     if (notes !== undefined) updateData.notes = notes
     if (estimatedDelivery !== undefined) updateData.estimatedDelivery = estimatedDelivery
 
-    // Ancien statut avant mise à jour (pour l'email de changement de statut)
+    // Ancien état avant mise à jour (pour les emails au client)
     const previous = await db.order.findUnique({
       where: { id },
-      select: { status: true },
+      select: { status: true, paymentStatus: true },
     })
 
     const order = await db.order.update({
@@ -151,8 +151,17 @@ export async function PUT(request: NextRequest) {
       }
     })
 
-    // Notification admin + email au client si le statut a changé (non bloquant)
-    if (previous && previous.status !== order.status) {
+    // Notifications admin + email au client (non bloquant).
+    // Passage à « payé » par l'admin (paiement cash, virement, rattrapage) →
+    // envoi du REÇU DE PAIEMENT au client (anti-doublon interne : si le reçu
+    // a déjà été envoyé par l'IPN PayDunya, aucun double envoi).
+    const becamePaid = previous &&
+      previous.paymentStatus !== 'paid' &&
+      (order.paymentStatus === 'paid' || order.status === 'paid')
+
+    if (becamePaid) {
+      await notifyPaymentConfirmed(order)
+    } else if (previous && previous.status !== order.status) {
       await notifyStatusChanged(order, previous.status, order.status)
     }
 
