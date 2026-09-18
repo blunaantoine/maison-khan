@@ -2254,7 +2254,7 @@ export default function Home() {
           router.push(`/produit/${product.id}`)
         }}
       >
-        <img src={product.image} alt={product.name} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x500?text=Image' }} />
+        <img src={product.image || 'https://placehold.co/400x500?text=Image'} alt={product.name} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x500?text=Image' }} />
         <div className="product-overlay"></div>
         <div className="product-info">
           <div className="flex justify-between items-center mb-2">
@@ -2313,7 +2313,7 @@ export default function Home() {
                         <div className="flex-1 flex gap-4">
                           {cat.subCategories.filter(sub => sub.genre === megaMenuGenre || sub.genre === 'all' || (megaMenuGenre !== 'mixte' && sub.genre === 'mixte')).find(sub => sub.id === activeSubCategory)?.images?.slice(0, 3).map((img) => (
                             <div key={img.id} className="relative flex-1 aspect-[3/4] overflow-hidden bg-[#EDE8E1]">
-                              <img src={img.image} alt={img.title || ''} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x400?text=Image' }} />
+                              <img src={img.image || 'https://placehold.co/300x400?text=Image'} alt={img.title || ''} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x400?text=Image' }} />
                               {img.title && <div className="absolute bottom-0 left-0 right-0 bg-[#0A0A0A]/70 text-[#F8F6F3] p-2"><p className="text-xs">{img.title}</p></div>}
                             </div>
                           ))}
@@ -2496,7 +2496,7 @@ export default function Home() {
                         <video src={slide.image} className="w-full h-full object-cover" autoPlay muted={videoMuted} loop playsInline preload="metadata" id={`hero-video-${slide.id}`} onError={(e) => { const container = (e.target as HTMLVideoElement).parentElement; if (container) container.innerHTML = '<div class="w-full h-full bg-gray-800 flex items-center justify-center"><div class="text-center text-white p-8"><p class="text-lg font-medium">Vidéo non disponible</p></div></div>' }} onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}) }} />
                       </div>
                     ) : (
-                      <img src={slide.image} alt={slide.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/1920x1080?text=Slide' }} />
+                      <img src={slide.image || 'https://placehold.co/1920x1080?text=Slide'} alt={slide.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/1920x1080?text=Slide' }} />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#F8F6F3]/30 to-[#F8F6F3]"></div>
                   </div>
@@ -3551,7 +3551,7 @@ export default function Home() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {heroSlides.map((slide) => (
                     <div key={slide.id} className="relative aspect-video bg-[#EDE8E1] overflow-hidden group">
-                      {slide.type === 'video' ? <video src={slide.image} className="w-full h-full object-cover" muted /> : <img src={slide.image} alt="" className="w-full h-full object-cover" />}
+                      {slide.type === 'video' ? <video src={slide.image || undefined} className="w-full h-full object-cover" muted /> : <img src={slide.image || 'https://placehold.co/400x225?text=Slide'} alt="" className="w-full h-full object-cover" />}
                       {slide.type === 'video' && <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">Vidéo</div>}
                       <button className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity" onClick={async () => {
                         if (confirm('Supprimer ce média ?')) {
@@ -3675,7 +3675,7 @@ export default function Home() {
                           <div className="grid grid-cols-3 gap-2 mb-3">
                             {subCat.images?.map((img) => (
                               <div key={img.id} className="relative aspect-[3/4] bg-[#EDE8E1] overflow-hidden group">
-                                <img src={img.image} alt={img.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x133?text=Image' }} />
+                                <img src={img.image || 'https://placehold.co/100x133?text=Image'} alt={img.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x133?text=Image' }} />
                                 <button className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity" onClick={async () => {
                                   if (confirm('Supprimer cette image ?')) {
                                     await fetch(`/api/menu/${subCat.id}/images?imageId=${img.id}`, { method: 'DELETE' })
@@ -3740,7 +3740,7 @@ export default function Home() {
                     <tbody>
                       {products.map((p) => (
                         <tr key={p.id} className="border-b border-[#E5E0DA] hover:bg-gray-50">
-                          <td className="p-4"><img src={p.image} alt={p.name} className="w-12 h-12 object-cover bg-[#EDE8E1]" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100' }} /></td>
+                          <td className="p-4"><img src={p.image || 'https://placehold.co/100'} alt={p.name} className="w-12 h-12 object-cover bg-[#EDE8E1]" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100' }} /></td>
                           <td className="p-4"><p className="font-display font-bold text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>{p.name}</p><p className="text-xs text-[#6B6560] truncate max-w-[150px]">{p.subCategory || ''}</p></td>
                           <td className="p-4"><span className={`inline-block px-2 py-1 rounded text-xs font-bold ${p.genre === 'homme' ? 'bg-blue-100 text-blue-800' : p.genre === 'femme' ? 'bg-pink-100 text-pink-800' : 'bg-gray-100 text-gray-800'}`}>{p.genre === 'homme' ? 'Homme' : p.genre === 'femme' ? 'Femme' : 'Mixte'}</span></td>
                           <td className="p-4 font-mono">{p.minPrice > 0 ? <><span className="text-xs text-[#6B6560]">À partir de </span>{formatPrice(p.minPrice)}</> : 'Prix sur demande'}</td>
@@ -3836,7 +3836,7 @@ export default function Home() {
                       {images[0] ? (
                         <img src={images[0]} alt={currentProduct.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x600?text=Image' }} />
                       ) : (
-                        <img src={currentProduct.image} alt={currentProduct.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x600?text=Image' }} />
+                        <img src={currentProduct.image || 'https://placehold.co/600x600?text=Image'} alt={currentProduct.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x600?text=Image' }} />
                       )}
                     </div>
                   )

@@ -34,7 +34,8 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   const [addedToCart, setAddedToCart] = useState(false);
 
   const selectedColor: ProductColor | undefined = product.colors?.[selectedColorIndex];
-  const currentImages = selectedColor?.images?.length ? selectedColor.images : [product.image];
+  const colorImages = (selectedColor?.images ?? []).filter(Boolean)
+  const currentImages = colorImages.length ? colorImages : [product.image || ''];
 
   // Reset image index quand on change de couleur — ajustement pendant le rendu
   // (pattern React officiel, sans effet ni rendus en cascade)
