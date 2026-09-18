@@ -175,7 +175,8 @@ export async function middleware(req: NextRequest) {
   const isUserRoute =
     (pathname.startsWith('/api/cart') && method !== 'GET') ||
     pathname.startsWith('/api/addresses') ||
-    (pathname === '/api/orders' && method === 'GET')
+    (pathname === '/api/orders' && method === 'GET') ||
+    pathname.startsWith('/api/push/subscribe')
 
   if (isUserRoute) {
     const token = readSessionCookie(req)
@@ -211,6 +212,7 @@ export const config = {
     '/api/email-logs',
     '/api/cart/:path*',
     '/api/addresses/:path*',
+    '/api/push/subscribe',
     '/api/orders',
     '/api/products',
     '/api/slides',

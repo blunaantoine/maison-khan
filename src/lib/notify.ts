@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { sendEmail } from '@/lib/email'
+import { sendPushToUser, type PushPayload } from '@/lib/push'
 import {
   getOrderConfirmationEmail,
   getPaymentReceiptEmail,
@@ -22,6 +23,7 @@ import {
 interface OrderWithItems {
   id: string
   orderNumber: string
+  userId?: string | null
   customerEmail: string
   customerPhone: string
   customerFirstName?: string | null
@@ -166,6 +168,27 @@ export async function notifyOrderCreated(order: OrderWithItems): Promise<void> {
       orderId: order.id,
     })
   }
+  // Notification push (appareils du client, si abonnés)
+  if (order.userId) {
+    await pushToOrderOwner(order, {
+      title: 'Commande confirmée ✓',
+      body: `Merci ! Votre commande ${order.orderNumber} a bien été reçue.`,
+    })
+  }
+}
+
+/** Push au propriétaire de la commande (jamais bloquant, tag par commande). */
+async function pushToOrderOwner(order: OrderWithItems, payload: Omit<PushPayload, 'tag' | 'url'>): Promise<void> {
+  if (!order.userId) return
+  try {
+    await sendPushToUser(order.userId, {
+      ...payload,
+      tag: order.id,
+      url: '/',
+    })
+  } catch (e) {
+    console.error('[notify] Push non envoyé :', e)
+  }
 }
 
 /** Paiement confirmé → notification admin + reçu de paiement au client (une seule fois). */
@@ -196,6 +219,11 @@ export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<voi
       orderId: order.id,
     })
   }
+  // Push « Paiement reçu »
+  await pushToOrderOwner(order, {
+    title: 'Paiement reçu ✓',
+    body: `Votre paiement de ${order.total.toLocaleString('fr-FR').replace(/\u202f/g, ' ')} XOF pour la commande ${order.orderNumber} a été confirmé.`,
+  })
 }
 
 /** Paiement échoué/annulé → notification admin (pas d'email au client : la page web l'informe déjà). */
@@ -234,7 +262,7 @@ export async function notifyStatusChanged(
     orderId: order.id,
   })
 
-  // Email client pour les statuts significatifs (processing / shipped / delivered / cancelled)
+  // Email client pour les statuts significatifs (processing / ready / shipped / delivered / cancelled)
   const template = getStatusUpdateEmail(toEmailOrder(order), newStatus)
   if (template && order.customerEmail) {
     await sendClientEmail({
@@ -243,5 +271,35 @@ export async function notifyStatusChanged(
       template,
       orderId: order.id,
     })
+  }
+
+  // Push client — messages courts adaptés à l'écran de verrouillage
+  const pushMessages: Record<string, { title: string; body: string }> = {
+    processing: {
+      title: 'Commande en préparation',
+      body: `Votre commande ${order.orderNumber} est en préparation dans notre atelier.`,
+    },
+    ready: {
+      title: 'Commande prête ✓',
+      body: `Votre commande ${order.orderNumber} vous attend en boutique ! Présentez votre numéro de commande au comptoir.`,
+    },
+    shipped: {
+      title: 'Commande expédiée 📦',
+      body: order.trackingNumber
+        ? `Votre commande ${order.orderNumber} a été expédiée. Suivi : ${order.trackingNumber}`
+        : `Votre commande ${order.orderNumber} a été expédiée et arrive bientôt.`,
+    },
+    delivered: {
+      title: 'Commande livrée ✓',
+      body: `Votre commande ${order.orderNumber} a été livrée. Merci pour votre confiance !`,
+    },
+    cancelled: {
+      title: 'Commande annulée',
+      body: `Votre commande ${order.orderNumber} a été annulée. Contactez-nous si c'est une erreur.`,
+    },
+  }
+  const push = pushMessages[newStatus]
+  if (push) {
+    await pushToOrderOwner(order, push)
   }
 }

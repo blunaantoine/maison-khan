@@ -7,6 +7,7 @@ import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { AdminOrdersTab } from '@/components/admin/AdminOrdersTab'
 import { AdminUsersTab } from '@/components/admin/AdminUsersTab'
 import { AdminNotificationsTab } from '@/components/admin/AdminNotificationsTab'
+import { checkPushState, subscribeToPush, unsubscribeFromPush, type PushClientState } from '@/lib/push-client'
 
 // Auth Form Component - Separate to prevent re-renders
 interface AuthFormProps {
@@ -1003,6 +1004,8 @@ export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [checkoutEmail, setCheckoutEmail] = useState('')
   const [checkoutPhone, setCheckoutPhone] = useState('')
+  const [pushState, setPushState] = useState<PushClientState>('inactive')
+  const [pushBusy, setPushBusy] = useState(false)
   const openCheckout = () => {
     setCheckoutEmail(user?.email || '')
     setCheckoutPhone(user?.phone || '')
@@ -1274,6 +1277,47 @@ export default function Home() {
       fetchUserAddresses()
     }
   }, [showUserDashboard, user?.id])
+
+  // État des notifications push (bouton du dashboard client)
+  useEffect(() => {
+    if (showUserDashboard && user?.id) {
+      checkPushState().then(setPushState).catch(() => setPushState('inactive'))
+    }
+  }, [showUserDashboard, user?.id])
+
+  // Activer / désactiver les notifications push sur CET appareil
+  const handleToggleNotifications = async () => {
+    if (pushBusy) return
+    // Permission bloquée au niveau navigateur → guider vers les réglages
+    if (pushState === 'denied') {
+      showToast('Notifications bloquées', 'Ouvrez les réglages du navigateur (icône 🔒 près de l\'adresse) et autorisez les notifications pour ce site', 'error')
+      return
+    }
+    if (pushState === 'unsupported') {
+      showToast('Indisponible', 'Votre navigateur ne supporte pas les notifications push', 'error')
+      return
+    }
+    setPushBusy(true)
+    try {
+      if (pushState === 'subscribed') {
+        const next = await unsubscribeFromPush()
+        setPushState(next)
+        showToast('Notifications', 'Notifications désactivées sur cet appareil')
+      } else {
+        const next = await subscribeToPush()
+        setPushState(next)
+        if (next === 'subscribed') {
+          showToast('Notifications activées ✓', 'Vous serez alerté à chaque étape de vos commandes, même site fermé')
+        } else if (next === 'denied') {
+          showToast('Notifications bloquées', 'Autorisez les notifications dans les réglages de votre navigateur', 'error')
+        } else {
+          showToast('Indisponible', 'Votre navigateur ne supporte pas les notifications push', 'error')
+        }
+      }
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   // Fetch admin orders
   const fetchAdminOrders = async () => {
@@ -2965,12 +3009,51 @@ export default function Home() {
                       </h2>
                       <p className="text-[#6B6560]">{user.email}</p>
                     </div>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                    {/* Notifications push — reçues même site fermé, comme une app */}
+                    <button
+                      onClick={handleToggleNotifications}
+                      disabled={pushBusy}
+                      aria-pressed={pushState === 'subscribed'}
+                      title={
+                        pushState === 'subscribed'
+                          ? 'Vous recevez les notifications sur cet appareil — cliquez pour désactiver'
+                          : pushState === 'denied'
+                          ? 'Notifications bloquées — autorisez-les dans les réglages du navigateur'
+                          : pushState === 'unsupported'
+                          ? 'Notifications non supportées par ce navigateur'
+                          : 'Recevoir une notification à chaque étape de vos commandes, même site fermé'
+                      }
+                      className={`flex items-center gap-2 text-xs uppercase tracking-wider px-4 py-2 border transition-colors ${
+                        pushState === 'subscribed'
+                          ? 'border-[#15803D]/40 bg-[#15803D]/10 text-[#15803D] hover:bg-[#15803D]/20'
+                          : pushState === 'denied'
+                          ? 'border-[#E5E0DA] text-[#B8B4AE] hover:border-[#B8B4AE]'
+                          : pushState === 'unsupported'
+                          ? 'border-[#E5E0DA] text-[#B8B4AE]'
+                          : 'border-[#9C7C5C] text-[#9C7C5C] hover:bg-[#9C7C5C] hover:text-white'
+                      }`}
+                    >
+                      <span aria-hidden="true">{pushBusy ? '⏳' : pushState === 'subscribed' ? '🔔' : '🔕'}</span>
+                      <span>
+                        {pushBusy
+                          ? '…'
+                          : pushState === 'subscribed'
+                          ? 'Notifications actives'
+                          : pushState === 'denied'
+                          ? 'Notifications bloquées'
+                          : pushState === 'unsupported'
+                          ? 'Non supporté'
+                          : 'Activer les notifications'}
+                      </span>
+                    </button>
                     <button
                       onClick={handleLogout}
                       className="text-[#6B6560] hover:text-[#0A0A0A] text-sm uppercase tracking-wider"
                     >
                       Déconnexion
                     </button>
+                  </div>
                   </div>
 
                   {/* Tabs */}

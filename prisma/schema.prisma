@@ -22,6 +22,7 @@ model User {
   addresses     Address[]
   cartItems     CartItem[]
   orders        Order[]
+  subscriptions PushSubscription[]
 
   @@index([email])
   @@index([role])
@@ -312,4 +313,19 @@ model EmailLog {
 
   @@index([createdAt])
   @@index([orderId])
+}
+
+// ─── Abonnements aux notifications push (Web Push) ───
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique // URL du service push du navigateur
+  p256dh    String   // clé publique de chiffrement
+  auth      String   // secret d'authentification
+  userAgent String?  // navigateur/appareil (pour l'affichage)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
