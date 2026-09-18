@@ -329,3 +329,20 @@ model PushSubscription {
 
   @@index([userId])
 }
+
+// ─── Campagnes de notifications push écrites par l'admin ───
+// Permet d'envoyer (immédiatement ou programmé) un message push
+// à tous les clients abonnés : promos, annonces, nouveautés…
+model PushCampaign {
+  id          String    @id @default(cuid())
+  title       String    // titre de la notification (≈ 50 car. conseillés)
+  body        String    // message affiché (≈ 120 car. conseillés)
+  url         String    @default("/") // page ouverte au clic
+  status      String    @default("scheduled") // scheduled | sent | cancelled
+  scheduledAt DateTime  // quand envoyer (passé = envoi immédiat)
+  sentAt      DateTime? // quand réellement envoyé
+  sentCount   Int       @default(0) // nombre d'appareils touchés
+  createdAt   DateTime  @default(now())
+
+  @@index([status, scheduledAt])
+}

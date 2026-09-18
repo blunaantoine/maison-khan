@@ -3064,6 +3064,7 @@ export default function Home() {
                       { id: 'addresses', label: 'Mes Adresses' },
                       { id: 'admin-products', label: 'Produits', roles: ['admin'], action: () => { setAdminTab('products'); navigateTo('admin'); } },
                       { id: 'admin-orders', label: 'Commandes', roles: ['admin', 'manager'], action: () => { setAdminTab('orders'); navigateTo('admin'); fetchAdminOrders(); } },
+                      { id: 'admin-notifications', label: 'Notifications', roles: ['admin', 'manager'], action: () => { setAdminTab('notifications'); navigateTo('admin'); } },
                       { id: 'admin-users', label: 'Utilisateurs', roles: ['admin'], action: () => { setAdminTab('users'); navigateTo('admin'); fetchAdminUsers(); } }
                     ].filter(tab => !tab.roles || tab.roles.includes(user?.role || '')).map(tab => (
                       <button

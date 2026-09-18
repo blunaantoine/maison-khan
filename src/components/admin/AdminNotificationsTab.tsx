@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Bell,
@@ -18,12 +20,17 @@ import {
   MailCheck,
   MailX,
   MailQuestion,
+  Send,
+  Clock,
+  Ban,
+  Smartphone,
 } from 'lucide-react'
 
 /**
  * Onglet Notifications de l'admin :
- *  1. Centre de notifications (nouvelles commandes, paiements, changements de statut)
- *  2. Journal des emails envoyés aux clients (reçus, confirmations, statuts)
+ *  1. Envoyer une notification push aux clients (immédiate ou programmée)
+ *  2. Centre de notifications (nouvelles commandes, paiements, changements de statut)
+ *  3. Journal des emails envoyés aux clients (reçus, confirmations, statuts)
  *
  * Auto-refresh 30 s + synchro du badge non-lues avec le parent via onUnreadChange.
  */
@@ -55,6 +62,23 @@ interface EmailStats {
   skipped: number
   total: number
   configured: boolean
+}
+
+interface PushCampaignItem {
+  id: string
+  title: string
+  body: string
+  url: string
+  status: 'scheduled' | 'sent' | 'cancelled'
+  scheduledAt: string
+  sentAt: string | null
+  sentCount: number
+  createdAt: string
+}
+
+interface PushAudienceStats {
+  subscribers: number
+  devices: number
 }
 
 const TYPE_META: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -97,11 +121,21 @@ export function AdminNotificationsTab({ onUnreadChange }: AdminNotificationsTabP
   const [busy, setBusy] = useState(false)
   const mounted = useRef(true)
 
+  // ── Composer de notifications push ──
+  const [campaigns, setCampaigns] = useState<PushCampaignItem[] | null>(null)
+  const [audience, setAudience] = useState<PushAudienceStats | null>(null)
+  const [form, setForm] = useState({ title: '', body: '', url: '' })
+  const [scheduledMode, setScheduledMode] = useState(false)
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendResult, setSendResult] = useState<{ ok: boolean; message: string } | null>(null)
+
   const fetchAll = useCallback(async () => {
     try {
-      const [notifRes, emailRes] = await Promise.all([
+      const [notifRes, emailRes, campaignRes] = await Promise.all([
         fetch('/api/notifications', { credentials: 'include' }),
         fetch('/api/email-logs', { credentials: 'include' }),
+        fetch('/api/admin/push-campaigns', { credentials: 'include' }),
       ])
       if (notifRes.ok) {
         const data = await notifRes.json()
@@ -114,6 +148,12 @@ export function AdminNotificationsTab({ onUnreadChange }: AdminNotificationsTabP
         if (!mounted.current) return
         setEmailLogs(data.logs || [])
         setEmailStats(data.stats || null)
+      }
+      if (campaignRes.ok) {
+        const data = await campaignRes.json()
+        if (!mounted.current) return
+        setCampaigns(data.campaigns || [])
+        setAudience(data.stats || null)
       }
     } catch {
       // silencieux : le prochain poll réessaiera
@@ -183,8 +223,273 @@ export function AdminNotificationsTab({ onUnreadChange }: AdminNotificationsTabP
 
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0
 
+  // ── Actions du composer push ──
+
+  const submitCampaign = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (sending) return
+    setSending(true)
+    setSendResult(null)
+    try {
+      const res = await fetch('/api/admin/push-campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: form.title,
+          body: form.body,
+          url: form.url || undefined,
+          scheduledAt: scheduledMode && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSendResult({ ok: true, message: data.message || 'Notification créée' })
+        setForm({ title: '', body: '', url: '' })
+        setScheduledAt('')
+        fetchAll()
+      } else {
+        setSendResult({ ok: false, message: data.error || 'Erreur lors de l\u2019envoi' })
+      }
+    } catch {
+      setSendResult({ ok: false, message: 'Connexion impossible — réessayez' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const campaignAction = async (id: string, action: 'cancel' | 'send-now') => {
+    try {
+      const res = await fetch('/api/admin/push-campaigns', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ id, action }),
+      })
+      if (res.ok) fetchAll()
+    } catch { /* silencieux */ }
+  }
+
+  const deleteCampaign = async (id: string) => {
+    try {
+      await fetch('/api/admin/push-campaigns', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ id }),
+      })
+      fetchAll()
+    } catch { /* silencieux */ }
+  }
+
+  const formatDateTime = (iso: string) =>
+    new Date(iso).toLocaleString('fr-FR', {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
+
   return (
     <div className="space-y-8">
+      {/* ── Envoyer une notification push ── */}
+      <Card className="p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <Send className="h-6 w-6 text-[#9C7C5C]" />
+            <h3
+              className="font-display text-xl text-[#0A0A0A]"
+              style={{ fontFamily: "'Cormorant Garamond', serif" }}
+            >
+              Envoyer une notification aux clients
+            </h3>
+          </div>
+          {audience && (
+            <span className="flex items-center gap-1.5 text-xs text-[#6B6560] bg-[#F8F6F3] px-3 py-1.5">
+              <Smartphone className="h-3.5 w-3.5" />
+              {audience.subscribers} client{audience.subscribers > 1 ? 's' : ''} abonné
+              {audience.subscribers > 1 ? 's' : ''} · {audience.devices} appareil
+              {audience.devices > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        <form onSubmit={submitCampaign} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="push-title" className="block text-xs font-medium uppercase tracking-widest text-[#9C9A92] mb-2">
+                Titre <span className="text-[#B45309]">*</span>
+              </label>
+              <Input
+                id="push-title"
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="Ex : Nouvelle collection Aurore"
+                maxLength={80}
+                required
+              />
+              <p className="text-[10px] text-[#9C9A92] mt-1">{form.title.length}/80 — court = plus lisible sur téléphone</p>
+            </div>
+            <div>
+              <label htmlFor="push-url" className="block text-xs font-medium uppercase tracking-widest text-[#9C9A92] mb-2">
+                Lien ouvert au clic <span className="normal-case tracking-normal">(optionnel)</span>
+              </label>
+              <Input
+                id="push-url"
+                value={form.url}
+                onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+                placeholder="/ (accueil) ou /produit/…"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="push-body" className="block text-xs font-medium uppercase tracking-widest text-[#9C9A92] mb-2">
+              Message <span className="text-[#B45309]">*</span>
+            </label>
+            <Textarea
+              id="push-body"
+              value={form.body}
+              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+              placeholder="Ex : Les bottines Aurore viennent d'arriver en boutique — pièces limitées !"
+              maxLength={200}
+              rows={2}
+              required
+            />
+            <p className="text-[10px] text-[#9C9A92] mt-1">{form.body.length}/200 — visible sur l'écran de verrouillage</p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="flex items-center gap-2 text-sm text-[#0A0A0A] cursor-pointer select-none pb-2">
+              <input
+                type="checkbox"
+                checked={scheduledMode}
+                onChange={(e) => setScheduledMode(e.target.checked)}
+                className="h-4 w-4 accent-[#9C7C5C]"
+              />
+              Programmer plus tard
+            </label>
+            {scheduledMode && (
+              <div className="flex-1 min-w-[220px]">
+                <label htmlFor="push-when" className="block text-xs font-medium uppercase tracking-widest text-[#9C9A92] mb-2">
+                  Date et heure d'envoi
+                </label>
+                <Input
+                  id="push-when"
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  required={scheduledMode}
+                />
+              </div>
+            )}
+            <Button
+              type="submit"
+              disabled={sending || !form.title.trim() || !form.body.trim() || (scheduledMode && !scheduledAt)}
+              className="bg-[#0A0A0A] text-white hover:bg-[#9C7C5C] ml-auto"
+            >
+              {sending ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Envoi…
+                </>
+              ) : scheduledMode ? (
+                <>
+                  <Clock className="h-4 w-4 mr-2" /> Programmer
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" /> Envoyer maintenant
+                </>
+              )}
+            </Button>
+          </div>
+
+          {sendResult && (
+            <p
+              role="status"
+              className={`text-sm px-4 py-3 ${
+                sendResult.ok
+                  ? 'bg-[#F0F7F1] text-[#15803D] border border-[#15803D]/20'
+                  : 'bg-[#FDF2F2] text-[#B91C1C] border border-[#B91C1C]/20'
+              }`}
+            >
+              {sendResult.ok ? '✓ ' : '✗ '}{sendResult.message}
+            </p>
+          )}
+        </form>
+
+        {/* Historique des campagnes */}
+        {campaigns === null ? (
+          <div className="mt-6 space-y-2">
+            <Skeleton className="h-12" />
+            <Skeleton className="h-12" />
+          </div>
+        ) : campaigns.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-[#EDE8E1]">
+            <p className="text-xs font-medium uppercase tracking-widest text-[#9C9A92] mb-3">
+              Historique des notifications
+            </p>
+            <ul className="divide-y divide-[#EDE8E1] max-h-72 overflow-y-auto">
+              {campaigns.map((c) => (
+                <li key={c.id} className="flex items-start gap-3 py-3">
+                  <span className="flex-shrink-0 mt-0.5">
+                    {c.status === 'sent' ? (
+                      <CheckCheck className="h-4 w-4 text-[#15803D]" />
+                    ) : c.status === 'scheduled' ? (
+                      <Clock className="h-4 w-4 text-[#B45309]" />
+                    ) : (
+                      <Ban className="h-4 w-4 text-[#9C9A92]" />
+                    )}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#0A0A0A]">{c.title}</p>
+                    <p className="text-xs text-[#6B6560] break-words">{c.body}</p>
+                    <p className="text-[11px] text-[#9C9A92] mt-0.5">
+                      {c.status === 'sent' && c.sentAt
+                        ? `Envoyée le ${formatDateTime(c.sentAt)} · ${c.sentCount} appareil${c.sentCount > 1 ? 's' : ''}`
+                        : c.status === 'scheduled'
+                          ? `Programmée pour le ${formatDateTime(c.scheduledAt)}`
+                          : 'Annulée'}
+                    </p>
+                  </div>
+                  {c.status === 'scheduled' && (
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => campaignAction(c.id, 'send-now')}
+                        title="Envoyer maintenant au lieu d'attendre"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => campaignAction(c.id, 'cancel')}
+                        title="Annuler la programmation"
+                      >
+                        <Ban className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                  {c.status !== 'scheduled' && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteCampaign(c.id)}
+                      title="Supprimer de l'historique"
+                      className="text-[#9C9A92] hover:text-[#B91C1C] flex-shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Card>
+
       {/* ── Centre de notifications ── */}
       <Card className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">

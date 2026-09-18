@@ -99,3 +99,72 @@ export async function hasPushSubscription(userId: string): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Envoyer un push à TOUS les appareils abonnés (campagne admin).
+ * Retourne le nombre d'envois réussis. Ne lève jamais.
+ */
+export async function sendPushToAll(payload: PushPayload): Promise<number> {
+  if (!ensureConfigured()) {
+    console.log('[push:skipped] VAPID keys absentes — envoi simulé :', payload.title)
+    return 0
+  }
+
+  let subscriptions: { id: string; endpoint: string; p256dh: string; auth: string }[]
+  try {
+    subscriptions = await db.pushSubscription.findMany({
+      select: { id: true, endpoint: true, p256dh: true, auth: true },
+    })
+  } catch (e) {
+    console.error('[push:error] lecture abonnements :', e)
+    return 0
+  }
+
+  if (subscriptions.length === 0) return 0
+
+  const data = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    url: payload.url || '/',
+    tag: payload.tag || 'maison-khan-campaign',
+  })
+
+  const results = await Promise.allSettled(
+    subscriptions.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          data,
+          { TTL: 24 * 60 * 60 }
+        )
+        return true
+      } catch (e) {
+        const status = (e as { statusCode?: number }).statusCode
+        if (status === 404 || status === 410) {
+          try {
+            await db.pushSubscription.delete({ where: { id: sub.id } })
+          } catch { /* déjà supprimé */ }
+        } else {
+          console.error(`[push:error] ${sub.endpoint.slice(0, 60)}… :`, status || e)
+        }
+        return false
+      }
+    })
+  )
+
+  return results.filter((r) => r.status === 'fulfilled' && r.value === true).length
+}
+
+/** Combien de clients (personnes distinctes) et d'appareils sont abonnés ? */
+export async function getPushAudienceStats(): Promise<{ subscribers: number; devices: number }> {
+  try {
+    const devices = await db.pushSubscription.count()
+    const subscribers = await db.pushSubscription.findMany({
+      distinct: ['userId'],
+      select: { userId: true },
+    })
+    return { subscribers: subscribers.length, devices }
+  } catch {
+    return { subscribers: 0, devices: 0 }
+  }
+}

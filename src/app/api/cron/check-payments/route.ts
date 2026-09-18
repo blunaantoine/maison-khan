@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { FedaPay, Transaction } from 'fedapay'
+import { processDuePushCampaigns } from '@/lib/push-campaigns'
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  }
+
+  // Notifications push programmées dont l'heure est venue (jamais bloquant)
+  let pushCampaignsSent = 0
+  try {
+    pushCampaignsSent = await processDuePushCampaigns()
+  } catch (e) {
+    console.error('Cron push-campaigns error:', e)
   }
 
   try {
@@ -92,6 +101,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       results,
+      pushCampaignsSent,
       timestamp: new Date().toISOString()
     })
 
