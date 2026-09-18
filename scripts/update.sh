@@ -10,11 +10,14 @@
 #
 # Le script :
 #   1. Écrit GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET dans .env (si fournis)
-#   2. Crée le swap anti-crash si absent (le build est gourmand en RAM)
-#   3. Arrête l'app (libère la mémoire — évite le crash pendant le build)
-#   4. Reconstruit l'application (bun run build)
-#   5. Redémarre l'app + pm2 save
-#   6. Vérifie la boutique, le bouton Google et le site web
+#   2. Installe les nouvelles dépendances (bun install)
+#   3. Génère les clés VAPID des notifications push si absentes
+#   4. Sauvegarde la base + met à jour le schéma (nouvelles tables)
+#   5. Crée le swap anti-crash si absent (le build est gourmand en RAM)
+#   6. Arrête l'app (libère la mémoire — évite le crash pendant le build)
+#   7. Reconstruit l'application (bun run build)
+#   8. Redémarre l'app + pm2 save
+#   9. Vérifie la boutique, le bouton Google et le site web
 #
 # Sûr : ne touche ni à la base de données, ni au code.
 # ============================================================
@@ -44,7 +47,37 @@ else
   info "Aucun identifiant Google fourni → configuration actuelle conservée"
 fi
 
-# ── 2. Backup de la base + mise à jour du schéma (nouvelles tables) ──
+# ── 2. Dépendances (nouvelles librairies du code mis à jour) ──
+info "Installation des dépendances (bun install)..."
+if bun install > /tmp/mk-install.log 2>&1; then
+  ok "Dépendances à jour"
+else
+  bad "bun install échoué"
+  info "Détails : tail -20 /tmp/mk-install.log — envoie-les si tu bloques"
+  exit 1
+fi
+
+# ── 3. Clés VAPID des notifications push (générées si absentes) ──
+if ! grep -q '^NEXT_PUBLIC_VAPID_PUBLIC_KEY=..*' .env 2>/dev/null || ! grep -q '^VAPID_PRIVATE_KEY=..*' .env 2>/dev/null; then
+  info "Génération des clés VAPID (notifications push)..."
+  VAPID_OUT=$(bunx web-push generate-vapid-keys 2>/dev/null)
+  VAPID_PUB=$(echo "$VAPID_OUT" | grep -A1 'Public Key:' | tail -1 | tr -d '[:space:]')
+  VAPID_PRIV=$(echo "$VAPID_OUT" | grep -A1 'Private Key:' | tail -1 | tr -d '[:space:]')
+  if [ -n "$VAPID_PUB" ] && [ -n "$VAPID_PRIV" ]; then
+    touch .env
+    [ -n "$(tail -c 1 .env)" ] && echo >> .env
+    grep -v '^NEXT_PUBLIC_VAPID_PUBLIC_KEY=' .env | grep -v '^VAPID_PRIVATE_KEY=' | grep -v '^VAPID_SUBJECT=' > .env.tmp
+    printf '%s\n%s\n%s\n' "NEXT_PUBLIC_VAPID_PUBLIC_KEY=$VAPID_PUB" "VAPID_PRIVATE_KEY=$VAPID_PRIV" "VAPID_SUBJECT=mailto:contact@maison-khan.com" >> .env.tmp
+    mv .env.tmp .env
+    ok "Clés VAPID générées — notifications push opérationnelles"
+  else
+    info "Clés VAPID non générées (les notifications resteront simulées)"
+  fi
+else
+  ok "Clés VAPID déjà présentes (notifications push conservées)"
+fi
+
+# ── 4. Backup de la base + mise à jour du schéma (nouvelles tables) ──
 info "Sauvegarde de la base de données..."
 if [ -f db/custom.db ]; then
   if command -v sqlite3 >/dev/null 2>&1; then
@@ -61,7 +94,7 @@ else
   info "Détails : tail -20 /tmp/mk-dbpush.log — envoie-les si tu bloques"
 fi
 
-# ── 3. Swap anti-crash pendant le build (créé seulement s'il manque) ──
+# ── 5. Swap anti-crash pendant le build (créé seulement s'il manque) ──
 if ! swapon --show 2>/dev/null | grep -q .; then
   if fallocate -l 2G /swapfile 2>/dev/null; then
     chmod 600 /swapfile
@@ -76,7 +109,7 @@ else
   ok "Swap déjà présent"
 fi
 
-# ── 4. Construction de la nouvelle version ──
+# ── 6. Construction de la nouvelle version ──
 info "Arrêt de l'app pour libérer la mémoire..."
 pm2 stop maison-khan >/dev/null 2>&1
 info "Construction de la nouvelle version (2 à 4 minutes, patiente sans fermer la page)..."
@@ -90,7 +123,7 @@ else
   exit 1
 fi
 
-# ── 5. Redémarrage de l'application ──
+# ── 7. Redémarrage de l'application ──
 pm2 restart maison-khan >/dev/null 2>&1
 sleep 5
 if ! curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then
@@ -101,7 +134,7 @@ if ! curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then
 fi
 pm2 save >/dev/null 2>&1 && info "pm2 save OK (l'app redémarrera après un reboot du VPS)"
 
-# ── 6. Vérifications finales ──
+# ── 8. Vérifications finales ──
 echo ""
 echo "═══════════ RÉSULTAT ═══════════"
 if curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then
