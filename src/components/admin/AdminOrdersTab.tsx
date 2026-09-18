@@ -15,6 +15,7 @@ const STATUS_LABELS: Record<string, string> = {
   pending: 'En attente',
   paid: 'Payée',
   processing: 'En préparation',
+  ready: 'Prête (retrait)',
   shipped: 'Expédiée',
   delivered: 'Livrée',
   cancelled: 'Annulée',
@@ -24,6 +25,7 @@ const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
   paid: 'bg-blue-100 text-blue-800',
   processing: 'bg-indigo-100 text-indigo-800',
+  ready: 'bg-amber-100 text-amber-800',
   shipped: 'bg-purple-100 text-purple-800',
   delivered: 'bg-[#15803D]/10 text-[#15803D]',
   cancelled: 'bg-red-100 text-red-800',
@@ -39,6 +41,7 @@ const FILTERS = [
   { id: 'pending', label: 'En attente' },
   { id: 'paid', label: 'Payées' },
   { id: 'processing', label: 'En préparation' },
+  { id: 'ready', label: 'Prêtes (retrait)' },
   { id: 'shipped', label: 'Expédiées' },
   { id: 'delivered', label: 'Livrées' },
 ]
@@ -169,6 +172,7 @@ export function AdminOrdersTab({
                     <option value="pending">En attente</option>
                     <option value="paid">Payée</option>
                     <option value="processing">En préparation</option>
+                    <option value="ready">Prête (retrait boutique)</option>
                     <option value="shipped">Expédiée</option>
                     <option value="delivered">Livrée</option>
                     <option value="cancelled">Annulée</option>

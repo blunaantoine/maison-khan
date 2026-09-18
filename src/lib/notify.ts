@@ -220,6 +220,7 @@ export async function notifyStatusChanged(
     pending: 'En attente de paiement',
     paid: 'Payée',
     processing: 'En préparation',
+    ready: 'Prête (retrait boutique)',
     shipped: 'Expédiée',
     delivered: 'Livrée',
     cancelled: 'Annulée',

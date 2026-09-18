@@ -8,8 +8,8 @@
  * 3 templates :
  *  - getOrderConfirmationEmail : reçu de commande (en attente de paiement)
  *  - getPaymentReceiptEmail    : reçu de paiement (commande payée)
- *  - getStatusUpdateEmail      : changement de statut (préparation/expédition/
- *                                livraison/annulation)
+ *  - getStatusUpdateEmail      : changement de statut (préparation/prête pour
+ *                                retrait/expédition/livraison/annulation)
  */
 
 export interface EmailOrderItem {
@@ -213,7 +213,8 @@ export function getPaymentReceiptEmail(order: EmailOrder): { subject: string; ht
     ${shippingBlock(order)}
     <p style="margin:24px 0 0;color:#6B6560;font-size:14px;line-height:1.6;">
       Votre commande entre maintenant en préparation dans notre atelier.
-      Vous recevrez un email à chaque étape : préparation, expédition, livraison.
+      Vous recevrez un email à chaque étape : préparation, expédition ou retrait
+      en boutique, puis livraison.
     </p>
     <p style="margin:16px 0 0;font-family:Georgia,serif;font-size:18px;color:#0A0A0A;">L'atelier MAISON KHAN</p>`
   return { subject: `Reçu de paiement — ${order.orderNumber} ✓`, html: layout(body) }
@@ -224,6 +225,11 @@ export const STATUS_EMAIL_LABELS: Record<string, { title: string; intro: string;
     title: 'Votre commande est en préparation',
     intro: 'Nos artisans ont commencé la préparation de votre commande.',
     color: '#9C7C5C',
+  },
+  ready: {
+    title: 'Votre commande est prête ✓',
+    intro: 'Bonne nouvelle : votre commande est prête ! Vous pouvez venir la retirer à notre boutique de Lomé, muni(e) de votre numéro de commande.',
+    color: '#B45309',
   },
   shipped: {
     title: 'Votre commande est expédiée 📦',
