@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyStatusChanged } from '@/lib/notify'
 
 /**
  * Defense in depth: the middleware already validated the JWT and checked
@@ -135,6 +136,12 @@ export async function PUT(request: NextRequest) {
     if (notes !== undefined) updateData.notes = notes
     if (estimatedDelivery !== undefined) updateData.estimatedDelivery = estimatedDelivery
 
+    // Ancien statut avant mise à jour (pour l'email de changement de statut)
+    const previous = await db.order.findUnique({
+      where: { id },
+      select: { status: true },
+    })
+
     const order = await db.order.update({
       where: { id },
       data: updateData,
@@ -143,6 +150,11 @@ export async function PUT(request: NextRequest) {
         payments: true
       }
     })
+
+    // Notification admin + email au client si le statut a changé (non bloquant)
+    if (previous && previous.status !== order.status) {
+      await notifyStatusChanged(order, previous.status, order.status)
+    }
 
     return NextResponse.json({
       message: 'Commande mise à jour',

@@ -284,3 +284,32 @@ model CronLog {
   @@index([status])
   @@index([createdAt])
 }
+
+// ─── Notifications (centre de notifications admin) ───
+model Notification {
+  id        String   @id @default(cuid())
+  type      String   // order_created | payment_confirmed | payment_failed | status_changed | new_user | low_stock
+  title     String
+  message   String
+  orderId   String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([isRead, createdAt])
+  @@index([type])
+}
+
+// ─── Journal des emails envoyés aux clients ───
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  type      String   // order_confirmation | payment_receipt | status_update | password_reset
+  orderId   String?
+  status    String   // sent | failed | skipped (clé absente / email simulé)
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([orderId])
+}

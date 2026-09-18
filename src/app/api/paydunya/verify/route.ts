@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
 
 const PAYDUNYA_MODE = process.env.PAYDUNYA_MODE || 'test'
 const PAYDUNYA_BASE =
@@ -63,6 +64,13 @@ export async function GET(request: NextRequest) {
               where: { id: payment.orderId },
               data: { paymentStatus: 'paid', status: 'paid' },
             })
+            // Notification admin + reçu de paiement au client (anti-doublon interne,
+            // l'IPN callback arrivera probablement aussi)
+            const paidOrder = await db.order.findUnique({
+              where: { id: payment.orderId },
+              include: { items: true },
+            })
+            if (paidOrder) await notifyPaymentConfirmed(paidOrder)
           } else if (!payment) {
             const targetOrderId = invoice?.custom_data?.order_id ?? orderId
             if (targetOrderId) {
@@ -90,6 +98,14 @@ export async function GET(request: NextRequest) {
                 status: liveStatus === 'failed' ? 'payment_failed' : 'cancelled',
               },
             })
+            // Notification admin (échec/annulation détecté au retour boutique)
+            const failedOrder = await db.order.findUnique({
+              where: { id: payment.orderId },
+              include: { items: true },
+            })
+            if (failedOrder) {
+              await notifyPaymentFailed(failedOrder, liveStatus === 'failed' ? 'failed' : 'cancelled')
+            }
           }
         }
       } catch (e) {

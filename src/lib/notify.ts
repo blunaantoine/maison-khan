@@ -1,0 +1,246 @@
+import { db } from '@/lib/db'
+import { sendEmail } from '@/lib/email'
+import {
+  getOrderConfirmationEmail,
+  getPaymentReceiptEmail,
+  getStatusUpdateEmail,
+  type EmailOrder,
+} from '@/lib/email-templates'
+
+/**
+ * MAISON KHAN — Moteur de notifications.
+ *
+ * Deux canaux :
+ *  1. Notifications in-app (model Notification) → centre de notifications admin
+ *  2. Emails clients (Resend) → journalisés dans EmailLog
+ *
+ * Tolérance aux pannes : une notification ou un email ne doit JAMAIS faire
+ * échouer l'opération métier (création de commande, callback paiement…).
+ * Tout est donc try/catch et journalisé.
+ */
+
+interface OrderWithItems {
+  id: string
+  orderNumber: string
+  customerEmail: string
+  customerPhone: string
+  customerFirstName?: string | null
+  customerLastName?: string | null
+  shippingAddress?: string | null
+  shippingCity?: string | null
+  shippingCountry?: string | null
+  subtotal: number
+  shippingCost: number
+  total: number
+  trackingNumber?: string | null
+  status?: string
+  items: {
+    productName: string
+    size?: string | null
+    colorName?: string | null
+    quantity: number
+    unitPrice: number
+    totalPrice: number
+  }[]
+}
+
+function toEmailOrder(order: OrderWithItems): EmailOrder {
+  return {
+    orderNumber: order.orderNumber,
+    customerFirstName: order.customerFirstName,
+    customerLastName: order.customerLastName,
+    customerEmail: order.customerEmail,
+    customerPhone: order.customerPhone,
+    shippingAddress: order.shippingAddress,
+    shippingCity: order.shippingCity,
+    shippingCountry: order.shippingCountry,
+    subtotal: order.subtotal,
+    shippingCost: order.shippingCost,
+    total: order.total,
+    trackingNumber: order.trackingNumber,
+    items: order.items,
+  }
+}
+
+// ──────────────────────────────────────────────
+// Notifications in-app (admin)
+// ──────────────────────────────────────────────
+
+export async function createNotification(params: {
+  type: string
+  title: string
+  message: string
+  orderId?: string
+}): Promise<void> {
+  try {
+    await db.notification.create({ data: params })
+  } catch (e) {
+    console.error('[notify] Notification non créée :', e)
+  }
+}
+
+// ──────────────────────────────────────────────
+// Emails clients (avec journalisation)
+// ──────────────────────────────────────────────
+
+type EmailType = 'order_confirmation' | 'payment_receipt' | 'status_update'
+
+/**
+ * Envoie un email client + journalise le résultat dans EmailLog.
+ * Si RESEND_API_KEY est absente, l'email est journalisé « skipped »
+ * (l'application continue de fonctionner, l'envoi reprendra dès la clé configurée).
+ */
+async function sendClientEmail(params: {
+  to: string
+  type: EmailType
+  template: { subject: string; html: string }
+  orderId?: string
+}): Promise<void> {
+  const { to, type, template, orderId } = params
+  const apiKey = process.env.RESEND_API_KEY
+
+  if (!apiKey) {
+    console.log(`[email:skipped] ${type} → ${to} (RESEND_API_KEY absente)`)
+    try {
+      await db.emailLog.create({
+        data: { to, subject: template.subject, type, orderId, status: 'skipped', error: 'RESEND_API_KEY absente' },
+      })
+    } catch { /* jamais bloquant */ }
+    return
+  }
+
+  try {
+    const result = await sendEmail({ to, subject: template.subject, html: template.html })
+    try {
+      await db.emailLog.create({
+        data: {
+          to,
+          subject: template.subject,
+          type,
+          orderId,
+          status: result.success ? 'sent' : 'failed',
+          error: result.success ? null : String(result.error ?? 'erreur inconnue'),
+        },
+      })
+    } catch { /* jamais bloquant */ }
+  } catch (e) {
+    console.error(`[email:error] ${type} → ${to}`, e)
+    try {
+      await db.emailLog.create({
+        data: { to, subject: template.subject, type, orderId, status: 'failed', error: String(e) },
+      })
+    } catch { /* jamais bloquant */ }
+  }
+}
+
+/** Un email de ce type a-t-il déjà été envoyé pour cette commande ? (anti-doublon) */
+async function emailAlreadySent(orderId: string, type: EmailType): Promise<boolean> {
+  try {
+    const count = await db.emailLog.count({
+      where: { orderId, type, status: { in: ['sent', 'skipped'] } },
+    })
+    return count > 0
+  } catch {
+    return false
+  }
+}
+
+// ──────────────────────────────────────────────
+// Événements métier
+// ──────────────────────────────────────────────
+
+/** Commande créée → notification admin + email de confirmation (reçu) au client. */
+export async function notifyOrderCreated(order: OrderWithItems): Promise<void> {
+  const total = order.total.toLocaleString('fr-FR').replace(/\u202f/g, ' ')
+  await createNotification({
+    type: 'order_created',
+    title: 'Nouvelle commande',
+    message: `${order.orderNumber} — ${total} XOF · ${order.items.length} article${order.items.length > 1 ? 's' : ''} · ${order.customerFirstName || order.customerEmail}`,
+    orderId: order.id,
+  })
+  if (order.customerEmail) {
+    await sendClientEmail({
+      to: order.customerEmail,
+      type: 'order_confirmation',
+      template: getOrderConfirmationEmail(toEmailOrder(order)),
+      orderId: order.id,
+    })
+  }
+}
+
+/** Paiement confirmé → notification admin + reçu de paiement au client (une seule fois). */
+export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<void> {
+  const alreadySent = await emailAlreadySent(order.id, 'payment_receipt')
+  if (alreadySent) {
+    // Notification quand même (si le paiement passe par 2 chemins), email non.
+    await createNotification({
+      type: 'payment_confirmed',
+      title: 'Paiement confirmé',
+      message: `${order.orderNumber} — payée. Le reçu a déjà été envoyé au client.`,
+      orderId: order.id,
+    })
+    return
+  }
+  const total = order.total.toLocaleString('fr-FR').replace(/\u202f/g, ' ')
+  await createNotification({
+    type: 'payment_confirmed',
+    title: 'Paiement confirmé ✓',
+    message: `${order.orderNumber} — ${total} XOF reçus · reçu envoyé à ${order.customerEmail}`,
+    orderId: order.id,
+  })
+  if (order.customerEmail) {
+    await sendClientEmail({
+      to: order.customerEmail,
+      type: 'payment_receipt',
+      template: getPaymentReceiptEmail(toEmailOrder(order)),
+      orderId: order.id,
+    })
+  }
+}
+
+/** Paiement échoué/annulé → notification admin (pas d'email au client : la page web l'informe déjà). */
+export async function notifyPaymentFailed(order: OrderWithItems, reason: 'failed' | 'cancelled'): Promise<void> {
+  await createNotification({
+    type: 'payment_failed',
+    title: reason === 'cancelled' ? 'Paiement annulé' : 'Paiement refusé',
+    message: `${order.orderNumber} — le client peut réessayer depuis son compte`,
+    orderId: order.id,
+  })
+}
+
+/** Changement de statut par l'admin → notification + email au client. */
+export async function notifyStatusChanged(
+  order: OrderWithItems,
+  oldStatus: string,
+  newStatus: string
+): Promise<void> {
+  if (oldStatus === newStatus) return
+
+  const labels: Record<string, string> = {
+    pending: 'En attente de paiement',
+    paid: 'Payée',
+    processing: 'En préparation',
+    shipped: 'Expédiée',
+    delivered: 'Livrée',
+    cancelled: 'Annulée',
+    payment_failed: 'Paiement échoué',
+  }
+
+  await createNotification({
+    type: 'status_changed',
+    title: 'Statut de commande modifié',
+    message: `${order.orderNumber} : ${labels[oldStatus] || oldStatus} → ${labels[newStatus] || newStatus}`,
+    orderId: order.id,
+  })
+
+  // Email client pour les statuts significatifs (processing / shipped / delivered / cancelled)
+  const template = getStatusUpdateEmail(toEmailOrder(order), newStatus)
+  if (template && order.customerEmail) {
+    await sendClientEmail({
+      to: order.customerEmail,
+      type: 'status_update',
+      template,
+      orderId: order.id,
+    })
+  }
+}

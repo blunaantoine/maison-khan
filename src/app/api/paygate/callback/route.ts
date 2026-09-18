@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
 
 /**
  * PayGate Callback Endpoint
@@ -93,6 +94,22 @@ export async function POST(request: NextRequest) {
       console.log(`  Montant: ${amount} FCFA`)
       console.log(`  Téléphone: ${phone_number}`)
       console.log(`  Méthode: ${payment_method}`)
+
+      // Notification admin + reçu de paiement par email au client
+      const paidOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (paidOrder) await notifyPaymentConfirmed(paidOrder)
+    } else if (status === 4 || status === 6) {
+      // Expiré (4) ou annulé (6) → notification admin
+      const failedOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (failedOrder) {
+        await notifyPaymentFailed(failedOrder, status === 6 ? 'cancelled' : 'failed')
+      }
     }
 
     // Always return 200 to prevent retries

@@ -44,7 +44,24 @@ else
   info "Aucun identifiant Google fourni → configuration actuelle conservée"
 fi
 
-# ── 2. Swap anti-crash pendant le build (créé seulement s'il manque) ──
+# ── 2. Backup de la base + mise à jour du schéma (nouvelles tables) ──
+info "Sauvegarde de la base de données..."
+if [ -f db/custom.db ]; then
+  if command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 db/custom.db ".backup 'db/custom.db.backup'" 2>/dev/null && ok "Base sauvegardée (db/custom.db.backup)"
+  else
+    cp db/custom.db db/custom.db.backup 2>/dev/null && ok "Base sauvegardée (copie simple)"
+  fi
+fi
+info "Mise à jour du schéma de la base (nouvelles tables si besoin)..."
+if bun run db:push > /tmp/mk-dbpush.log 2>&1; then
+  ok "Schéma de la base à jour"
+else
+  bad "Mise à jour du schéma échouée — la base sauvegardée est conservée"
+  info "Détails : tail -20 /tmp/mk-dbpush.log — envoie-les si tu bloques"
+fi
+
+# ── 3. Swap anti-crash pendant le build (créé seulement s'il manque) ──
 if ! swapon --show 2>/dev/null | grep -q .; then
   if fallocate -l 2G /swapfile 2>/dev/null; then
     chmod 600 /swapfile
@@ -59,7 +76,7 @@ else
   ok "Swap déjà présent"
 fi
 
-# ── 3. Construction de la nouvelle version ──
+# ── 4. Construction de la nouvelle version ──
 info "Arrêt de l'app pour libérer la mémoire..."
 pm2 stop maison-khan >/dev/null 2>&1
 info "Construction de la nouvelle version (2 à 4 minutes, patiente sans fermer la page)..."
@@ -73,7 +90,7 @@ else
   exit 1
 fi
 
-# ── 4. Redémarrage de l'application ──
+# ── 5. Redémarrage de l'application ──
 pm2 restart maison-khan >/dev/null 2>&1
 sleep 5
 if ! curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then
@@ -84,7 +101,7 @@ if ! curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then
 fi
 pm2 save >/dev/null 2>&1 && info "pm2 save OK (l'app redémarrera après un reboot du VPS)"
 
-# ── 5. Vérifications finales ──
+# ── 6. Vérifications finales ──
 echo ""
 echo "═══════════ RÉSULTAT ═══════════"
 if curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then

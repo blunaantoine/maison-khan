@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { createHash } from 'crypto'
+import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
 
 const PAYDUNYA_MASTER_KEY  = process.env.PAYDUNYA_MASTER_KEY  || ''
 const PAYDUNYA_PRIVATE_KEY = process.env.PAYDUNYA_PRIVATE_KEY || ''
@@ -153,6 +154,13 @@ export async function POST(request: NextRequest) {
 
     if (status === 'completed') {
 
+      // Notification admin + reçu de paiement par email au client
+      const paidOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (paidOrder) await notifyPaymentConfirmed(paidOrder)
+
       await db.$transaction(async (tx) => {
 
         const orderItems = await tx.orderItem.findMany({
@@ -205,6 +213,13 @@ export async function POST(request: NextRequest) {
           status: status === 'failed' ? 'payment_failed' : 'cancelled',
         },
       })
+
+      // Notification admin (échec/annulation)
+      const failedOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (failedOrder) await notifyPaymentFailed(failedOrder, status === 'failed' ? 'failed' : 'cancelled')
 
     }
 

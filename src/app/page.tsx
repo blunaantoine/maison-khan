@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { AdminOrdersTab } from '@/components/admin/AdminOrdersTab'
 import { AdminUsersTab } from '@/components/admin/AdminUsersTab'
+import { AdminNotificationsTab } from '@/components/admin/AdminNotificationsTab'
 
 // Auth Form Component - Separate to prevent re-renders
 interface AuthFormProps {
@@ -989,7 +990,8 @@ export default function Home() {
   const [videoMuted, setVideoMuted] = useState(true)
   const [videoPlaying, setVideoPlaying] = useState(true)
   const [adminPassword, setAdminPassword] = useState('')
-  const [adminTab, setAdminTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'settings'>('dashboard')
+  const [adminTab, setAdminTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'notifications' | 'settings'>('dashboard')
+  const [notificationsUnread, setNotificationsUnread] = useState(0)
   const [dashboardStats, setDashboardStats] = useState<AdminDashboardStats | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [adminOrders, setAdminOrders] = useState<Order[]>([])
@@ -1702,6 +1704,27 @@ export default function Home() {
     handleScroll()
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // Badge notifications admin : compte non-lues, rafraîchi toutes les 60 s
+  // (le composant AdminNotificationsTab fait son propre polling 30 s en détail)
+  useEffect(() => {
+    const isAdmin = user?.role === 'admin' || user?.role === 'manager'
+    if (!isAdmin) return
+
+    let active = true
+    const fetchUnread = async () => {
+      try {
+        const res = await fetch('/api/notifications', { credentials: 'include' })
+        if (res.ok && active) {
+          const data = await res.json()
+          setNotificationsUnread(data.unreadCount || 0)
+        }
+      } catch { /* silencieux */ }
+    }
+    fetchUnread()
+    const interval = setInterval(fetchUnread, 60000)
+    return () => { active = false; clearInterval(interval) }
+  }, [user?.role])
 
   // Animate elements
   useEffect(() => {
@@ -3399,22 +3422,28 @@ export default function Home() {
                   { id: 'dashboard', label: 'Tableau de bord', roles: ['admin', 'manager'] },
                   { id: 'products', label: 'Produits', roles: ['admin'] },
                   { id: 'orders', label: 'Commandes', roles: ['admin', 'manager'] },
+                  { id: 'notifications', label: 'Notifications', roles: ['admin', 'manager'] },
                   { id: 'users', label: 'Utilisateurs', roles: ['admin'] }
                 ].filter(tab => tab.roles.includes(user?.role || '')).map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => {
-                      setAdminTab(tab.id as 'dashboard' | 'products' | 'orders' | 'users')
+                      setAdminTab(tab.id as 'dashboard' | 'products' | 'orders' | 'users' | 'notifications')
                       if (tab.id === 'users') fetchAdminUsers()
                       if (tab.id === 'dashboard') fetchDashboardStats()
                     }}
-                    className={`py-3 px-4 text-sm uppercase tracking-wider transition-colors ${
+                    className={`py-3 px-4 text-sm uppercase tracking-wider transition-colors flex items-center gap-2 ${
                       adminTab === tab.id
                         ? 'border-b-2 border-[#9C7C5C] text-[#9C7C5C]'
                         : 'text-[#6B6560] hover:text-[#0A0A0A]'
                     }`}
                   >
                     {tab.label}
+                    {tab.id === 'notifications' && notificationsUnread > 0 && (
+                      <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#B91C1C] text-white text-[11px] font-bold flex items-center justify-center">
+                        {notificationsUnread > 99 ? '99+' : notificationsUnread}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -3428,6 +3457,11 @@ export default function Home() {
                   onGoToOrders={() => setAdminTab('orders')}
                   onGoToProducts={() => setAdminTab('products')}
                 />
+              )}
+
+              {/* Notifications Tab */}
+              {adminTab === 'notifications' && (
+                <AdminNotificationsTab onUnreadChange={setNotificationsUnread} />
               )}
 
               {/* Orders Tab */}

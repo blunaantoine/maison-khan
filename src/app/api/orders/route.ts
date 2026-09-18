@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyOrderCreated } from '@/lib/notify'
 
 // Generate unique order number with timestamp to avoid collisions
 const generateOrderNumber = async () => {
@@ -328,6 +329,9 @@ export async function POST(request: NextRequest) {
     if (validUserId) {
       await db.cartItem.deleteMany({ where: { userId: validUserId } })
     }
+
+    // Notification admin + email de confirmation (reçu) au client — non bloquant
+    await notifyOrderCreated(order)
 
     return NextResponse.json({
       message: 'Commande créée avec succès',

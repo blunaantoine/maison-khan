@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       git reset --hard origin/${DEPLOY_BRANCH} && \
       bun install && \
       bun run db:generate && \
+      bun run db:push && \
       bun run build && \
       pm2 restart maison-khan && \
       echo "[DEPLOY] $(date) — SUCCÈS" >> deploy-history.log

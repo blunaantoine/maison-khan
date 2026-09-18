@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 
-// Email addresses - using verified domain
-const FROM_EMAIL = 'contact@maison-khan.com'
+// Email addresses - using verified domain (configurable via .env)
+const FROM_EMAIL = process.env.EMAIL_FROM || 'contact@maison-khan.com'
 const REPLY_TO = 'technique@maison-khan.com' // Admin email for replies
 const BRAND_NAME = 'MAISON KHAN'
 

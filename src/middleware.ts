@@ -11,6 +11,8 @@ import { verifySession, readSessionCookie } from '@/lib/auth'
  *
  *   /api/admin/*         → manager + admin
  *   /api/admin/users/*   → admin seulement
+ *   /api/notifications/* → manager + admin (centre de notifications)
+ *   /api/email-logs/*    → manager + admin (journal des emails)
  *   /api/orders  (POST)  → client authentifié
  *   /api/cart            → client authentifié
  *   /api/addresses       → client authentifié
@@ -80,7 +82,12 @@ export async function middleware(req: NextRequest) {
   // ──────────────────────────────────────────────────────────────
   // 2. Admin routes — require manager or admin role
   // ──────────────────────────────────────────────────────────────
-  if (pathname.startsWith('/api/admin/')) {
+  const isAdminPanelRoute =
+    pathname.startsWith('/api/admin/') ||
+    pathname.startsWith('/api/notifications') ||
+    pathname.startsWith('/api/email-logs')
+
+  if (isAdminPanelRoute) {
     const token = readSessionCookie(req)
     const session = await verifySession(token)
 
@@ -200,6 +207,8 @@ export const config = {
     '/api/auth/register',
     '/api/auth/forgot-password',
     '/api/admin/:path*',
+    '/api/notifications',
+    '/api/email-logs',
     '/api/cart/:path*',
     '/api/addresses/:path*',
     '/api/orders',
