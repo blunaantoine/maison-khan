@@ -7,6 +7,8 @@ import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { AdminOrdersTab } from '@/components/admin/AdminOrdersTab'
 import { AdminUsersTab } from '@/components/admin/AdminUsersTab'
 import { AdminNotificationsTab } from '@/components/admin/AdminNotificationsTab'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
+import { ClientNotificationsTab } from '@/components/notifications/ClientNotificationsTab'
 import { checkPushState, subscribeToPush, unsubscribeFromPush, type PushClientState } from '@/lib/push-client'
 
 // Auth Form Component - Separate to prevent re-renders
@@ -1794,6 +1796,13 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  // Navigation depuis une notification (cloche 🔔 / dashboard client) :
+  // '#section' → section SPA, '#section:tab' → section + onglet dashboard
+  const handleNotificationNavigate = (section: string, tab?: string) => {
+    if (tab) setDashboardTab(tab)
+    navigateTo(section)
+  }
+
   // Mega Menu handlers
   const handleMenuEnter = (slug: string) => {
     if (megaMenuTimeoutRef.current) clearTimeout(megaMenuTimeoutRef.current)
@@ -2377,6 +2386,8 @@ export default function Home() {
           <div className="hidden lg:flex items-center gap-4">
             {user ? (
               <div className="flex items-center gap-4">
+                {/* Cloche notifications — badge non-lues, dropdown 10 dernières */}
+                <NotificationBell key={user.id} onNavigate={handleNotificationNavigate} />
                 <button
                   onClick={() => navigateTo('account')}
                   className="nav-link text-xs font-medium tracking-widest uppercase text-[#0A0A0A]"
@@ -2409,8 +2420,12 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Mobile: Cart + Menu Toggle */}
+          {/* Mobile: Notifications + Cart + Menu Toggle */}
           <div className="flex items-center gap-4 lg:hidden">
+            {/* Mobile Notifications Bell */}
+            {user && (
+              <NotificationBell key={`m-${user.id}`} onNavigate={handleNotificationNavigate} />
+            )}
             {/* Mobile Cart Button */}
             <button
               onClick={() => setShowCartModal(true)}
@@ -3060,6 +3075,7 @@ export default function Home() {
                   <div className="flex flex-wrap gap-2 border-b border-[#E5E0DA] mb-8">
                     {[
                       { id: 'orders', label: 'Mes Commandes' },
+                      { id: 'notifications', label: 'Notifications' },
                       { id: 'profile', label: 'Mon Profil' },
                       { id: 'addresses', label: 'Mes Adresses' },
                       { id: 'admin-products', label: 'Produits', roles: ['admin'], action: () => { setAdminTab('products'); navigateTo('admin'); } },
@@ -3288,6 +3304,11 @@ export default function Home() {
                         ))
                       )}
                     </div>
+                  )}
+
+                  {/* Notifications Tab — toutes les notifications du client */}
+                  {dashboardTab === 'notifications' && (
+                    <ClientNotificationsTab onNavigate={handleNotificationNavigate} />
                   )}
 
                   {/* Profile Tab */}

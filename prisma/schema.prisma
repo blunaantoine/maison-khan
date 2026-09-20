@@ -23,6 +23,7 @@ model User {
   cartItems     CartItem[]
   orders        Order[]
   subscriptions PushSubscription[]
+  clientNotifications ClientNotification[]
 
   @@index([email])
   @@index([role])
@@ -298,6 +299,34 @@ model Notification {
 
   @@index([isRead, createdAt])
   @@index([type])
+}
+
+// ─── Notifications in-app destinées aux CLIENTS (cloche 🔔) ───
+// Chaque ligne = une notification pour UN destinataire (fan-out à l'écriture :
+// un envoi « à tous » crée une ligne par utilisateur, regroupées par batchId).
+// Types gérés par le registre extensible src/lib/notifications/types.ts :
+//   order | payment | message | promotion | system | account
+model ClientNotification {
+  id        String    @id @default(cuid())
+  userId    String    // destinataire
+  type      String    // clé du registre NOTIFICATION_TYPES
+  title     String
+  message   String
+  link      String?   // lien interne : '/', '/produit/xxx', '#account', '#account:orders'…
+  orderId   String?   // contexte commande (notifications automatiques)
+  senderId  String?   // auteur (admin/manager) — null = notification automatique
+  batchId   String    // groupe d'envoi (1 par opération manuelle ou événement auto)
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt]) // compteur non-lues + liste par utilisateur
+  @@index([userId, createdAt])         // tri par date par utilisateur
+  @@index([batchId])                   // historique groupé (admin)
+  @@index([type])                      // filtres + stats par type
+  @@index([createdAt])                 // stats « envoyées aujourd'hui »
 }
 
 // ─── Journal des emails envoyés aux clients ───

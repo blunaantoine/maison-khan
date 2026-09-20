@@ -6,19 +6,25 @@ import {
   getStatusUpdateEmail,
   type EmailOrder,
 } from '@/lib/email-templates'
+import {
+  pushEventNotification,
+} from '@/lib/notifications/service'
+import { NOTIFICATION_TYPES } from '@/lib/notifications/types'
 
 /**
  * MAISON KHAN — Moteur de notifications.
  *
- * Trois canaux :
- *  1. Notifications in-app (model Notification) → centre de notifications admin
- *  2. Emails clients (Resend) → journalisés dans EmailLog
- *  3. Notifications push (Web Push) → appareils du client
+ * Quatre canaux :
+ *  1. Notifications in-app admin (model Notification) → centre de notifications admin
+ *  2. Notifications in-app client (model ClientNotification) → cloche 🔔 client
+ *  3. Emails clients (Resend) → journalisés dans EmailLog
+ *  4. Notifications push (Web Push) → appareils du client
  *
- * ⚠️ RÈGLE MÉTIER — AUCUNE communication client (email NI push) avant que le
- * paiement ne soit VÉRIFIÉ (paymentStatus === 'paid'). Le PREMIER email que
- * reçoit un client est le reçu de paiement (il contient le détail complet de
- * sa commande). Paiement en attente ou échoué → aucune communication client.
+ * ⚠️ RÈGLE MÉTIER — AUCUNE communication client (notification in-app, email
+ * NI push) avant que le paiement ne soit VÉRIFIÉ (paymentStatus === 'paid').
+ * Le PREMIER contact d'un client est le reçu de paiement (email) accompagné
+ * d'une notification in-app « Paiement reçu ». Paiement en attente ou échoué
+ * → aucune communication client (les notifications admin restent créées).
  *
  * Tolérance aux pannes : une notification, un email ou un push ne doit JAMAIS
  * faire échouer l'opération métier (création de commande, callback paiement…).
@@ -188,6 +194,23 @@ async function pushToOrderOwner(order: OrderWithItems, payload: Omit<PushPayload
   }
 }
 
+/** Notification in-app (cloche 🔔) au propriétaire de la commande.
+ *  Jamais bloquante. Les commandes invités (sans compte) sont ignorées. */
+async function inAppToOrderOwner(
+  order: OrderWithItems,
+  params: { title: string; message: string; type: 'order' | 'payment' }
+): Promise<void> {
+  if (!order.userId) return
+  await pushEventNotification({
+    userId: order.userId,
+    type: params.type,
+    title: params.title,
+    message: params.message,
+    link: '#account:orders',
+    orderId: order.id,
+  })
+}
+
 /** Paiement confirmé → notification admin + reçu de paiement au client (une seule fois). */
 export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<void> {
   const alreadySent = await emailAlreadySent(order.id, 'payment_receipt')
@@ -216,6 +239,12 @@ export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<voi
       orderId: order.id,
     })
   }
+  // Notification in-app « Paiement reçu » (PREMIÈRE notification client)
+  await inAppToOrderOwner(order, {
+    type: NOTIFICATION_TYPES.PAYMENT,
+    title: 'Paiement reçu ✓',
+    message: `Votre paiement de ${total} XOF pour la commande ${order.orderNumber} a été confirmé.`,
+  })
   // Push « Paiement reçu »
   await pushToOrderOwner(order, {
     title: 'Paiement reçu ✓',
@@ -276,7 +305,8 @@ export async function notifyStatusChanged(
     })
   }
 
-  // Push client — messages courts adaptés à l'écran de verrouillage
+  // Push client — messages courts adaptés à l'écran de verrouillage.
+  // Les MÊMES libellés alimentent la notification in-app (cloche 🔔).
   const pushMessages: Record<string, { title: string; body: string }> = {
     processing: {
       title: 'Commande en préparation',
@@ -303,6 +333,13 @@ export async function notifyStatusChanged(
   }
   const push = pushMessages[newStatus]
   if (push) {
+    // Notification in-app (cloche 🔔) — même message, même instant
+    await inAppToOrderOwner(order, {
+      type: NOTIFICATION_TYPES.ORDER,
+      title: push.title,
+      message: push.body,
+    })
+    // Push (écran de verrouillage, même site fermé)
     await pushToOrderOwner(order, push)
   }
 }

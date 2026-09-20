@@ -13,6 +13,7 @@ import { verifySession, readSessionCookie } from '@/lib/auth'
  *   /api/admin/users/*   → admin seulement
  *   /api/notifications/* → manager + admin (centre de notifications)
  *   /api/email-logs/*    → manager + admin (journal des emails)
+ *   /api/client/notifications/* → client authentifié (cloche 🔔)
  *   /api/orders  (POST)  → client authentifié
  *   /api/cart            → client authentifié
  *   /api/addresses       → client authentifié
@@ -175,6 +176,7 @@ export async function middleware(req: NextRequest) {
   const isUserRoute =
     (pathname.startsWith('/api/cart') && method !== 'GET') ||
     pathname.startsWith('/api/addresses') ||
+    pathname.startsWith('/api/client/notifications') ||
     (pathname === '/api/orders' && method === 'GET') ||
     pathname.startsWith('/api/push/subscribe')
 
@@ -198,6 +200,30 @@ export async function middleware(req: NextRequest) {
     })
   }
 
+  // ──────────────────────────────────────────────────────────────
+  // 4bis. /api/orders (POST/PUT/DELETE) — session OPTIONNELLE.
+  // Le checkout doit rester accessible aux invités, mais si une session
+  // valide existe on injecte l'identité VÉRIFIÉE (en écrasant tout header
+  // spoofé) pour rattacher la commande au compte du client — sans cela,
+  // les notifications in-app et push du client ne pourraient pas être
+  // envoyées (order.userId = null). Anti-spoof : le header ne vient
+  // JAMAIS du client, uniquement du JWT vérifié ici.
+  // ──────────────────────────────────────────────────────────────
+  if (pathname === '/api/orders' && method !== 'GET') {
+    const token = readSessionCookie(req)
+    const session = await verifySession(token)
+    if (session) {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-auth-user-id', session.sub)
+      requestHeaders.set('x-auth-role', session.role)
+      requestHeaders.set('x-auth-email', session.email)
+      return NextResponse.next({
+        request: { headers: requestHeaders },
+      })
+    }
+    return NextResponse.next()
+  }
+
   return NextResponse.next()
 }
 
@@ -210,6 +236,7 @@ export const config = {
     '/api/admin/:path*',
     '/api/notifications',
     '/api/email-logs',
+    '/api/client/notifications/:path*',
     '/api/cart/:path*',
     '/api/addresses/:path*',
     '/api/push/subscribe',

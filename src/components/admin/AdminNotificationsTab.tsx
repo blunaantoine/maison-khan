@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AdminInAppNotifications } from '@/components/admin/AdminInAppNotifications'
 import {
   Bell,
   ShoppingCart,
@@ -28,9 +29,10 @@ import {
 
 /**
  * Onglet Notifications de l'admin :
- *  1. Envoyer une notification push aux clients (immédiate ou programmée)
- *  2. Centre de notifications (nouvelles commandes, paiements, changements de statut)
- *  3. Journal des emails envoyés aux clients (reçus, confirmations, statuts)
+ *  1. Notifications in-app clients (composer ciblé, stats, historique)
+ *  2. Envoyer une notification push aux clients (immédiate ou programmée)
+ *  3. Centre de notifications (nouvelles commandes, paiements, changements de statut)
+ *  4. Journal des emails envoyés aux clients (reçus, confirmations, statuts)
  *
  * Auto-refresh 30 s + synchro du badge non-lues avec le parent via onUnreadChange.
  */
@@ -289,6 +291,9 @@ export function AdminNotificationsTab({ onUnreadChange }: AdminNotificationsTabP
 
   return (
     <div className="space-y-8">
+      {/* ── Notifications in-app clients (composer ciblé + stats + historique) ── */}
+      <AdminInAppNotifications />
+
       {/* ── Envoyer une notification push ── */}
       <Card className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
