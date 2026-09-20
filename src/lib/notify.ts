@@ -2,7 +2,6 @@ import { db } from '@/lib/db'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser, type PushPayload } from '@/lib/push'
 import {
-  getOrderConfirmationEmail,
   getPaymentReceiptEmail,
   getStatusUpdateEmail,
   type EmailOrder,
@@ -11,12 +10,18 @@ import {
 /**
  * MAISON KHAN — Moteur de notifications.
  *
- * Deux canaux :
+ * Trois canaux :
  *  1. Notifications in-app (model Notification) → centre de notifications admin
  *  2. Emails clients (Resend) → journalisés dans EmailLog
+ *  3. Notifications push (Web Push) → appareils du client
  *
- * Tolérance aux pannes : une notification ou un email ne doit JAMAIS faire
- * échouer l'opération métier (création de commande, callback paiement…).
+ * ⚠️ RÈGLE MÉTIER — AUCUNE communication client (email NI push) avant que le
+ * paiement ne soit VÉRIFIÉ (paymentStatus === 'paid'). Le PREMIER email que
+ * reçoit un client est le reçu de paiement (il contient le détail complet de
+ * sa commande). Paiement en attente ou échoué → aucune communication client.
+ *
+ * Tolérance aux pannes : une notification, un email ou un push ne doit JAMAIS
+ * faire échouer l'opération métier (création de commande, callback paiement…).
  * Tout est donc try/catch et journalisé.
  */
 
@@ -36,6 +41,7 @@ interface OrderWithItems {
   total: number
   trackingNumber?: string | null
   status?: string
+  paymentStatus?: string | null
   items: {
     productName: string
     size?: string | null
@@ -85,7 +91,10 @@ export async function createNotification(params: {
 // Emails clients (avec journalisation)
 // ──────────────────────────────────────────────
 
-type EmailType = 'order_confirmation' | 'payment_receipt' | 'status_update'
+// 'order_confirmation' n'existe plus : AUCUN email n'est envoyé avant le
+// paiement vérifié (le reçu de paiement est le premier email client).
+// Le label reste dans l'admin pour l'affichage des anciens logs.
+type EmailType = 'payment_receipt' | 'status_update'
 
 /**
  * Envoie un email client + journalise le résultat dans EmailLog.
@@ -151,7 +160,10 @@ async function emailAlreadySent(orderId: string, type: EmailType): Promise<boole
 // Événements métier
 // ──────────────────────────────────────────────
 
-/** Commande créée → notification admin + email de confirmation (reçu) au client. */
+/** Commande créée → notification admin UNIQUEMENT.
+ *  AUCUN email ni push au client à ce stade : le paiement n'est pas encore
+ *  vérifié. Le client recevra son PREMIER email (reçu de paiement, avec le
+ *  détail complet de la commande) dès que le paiement sera confirmé. */
 export async function notifyOrderCreated(order: OrderWithItems): Promise<void> {
   const total = order.total.toLocaleString('fr-FR').replace(/\u202f/g, ' ')
   await createNotification({
@@ -160,21 +172,6 @@ export async function notifyOrderCreated(order: OrderWithItems): Promise<void> {
     message: `${order.orderNumber} — ${total} XOF · ${order.items.length} article${order.items.length > 1 ? 's' : ''} · ${order.customerFirstName || order.customerEmail}`,
     orderId: order.id,
   })
-  if (order.customerEmail) {
-    await sendClientEmail({
-      to: order.customerEmail,
-      type: 'order_confirmation',
-      template: getOrderConfirmationEmail(toEmailOrder(order)),
-      orderId: order.id,
-    })
-  }
-  // Notification push (appareils du client, si abonnés)
-  if (order.userId) {
-    await pushToOrderOwner(order, {
-      title: 'Commande confirmée ✓',
-      body: `Merci ! Votre commande ${order.orderNumber} a bien été reçue.`,
-    })
-  }
 }
 
 /** Push au propriétaire de la commande (jamais bloquant, tag par commande). */
@@ -236,7 +233,9 @@ export async function notifyPaymentFailed(order: OrderWithItems, reason: 'failed
   })
 }
 
-/** Changement de statut par l'admin → notification + email au client. */
+/** Changement de statut par l'admin → notification admin + email/push au client
+ *  UNIQUEMENT si le paiement est vérifié (règle métier : aucune communication
+ *  client tant que paymentStatus !== 'paid'). */
 export async function notifyStatusChanged(
   order: OrderWithItems,
   oldStatus: string,
@@ -261,6 +260,10 @@ export async function notifyStatusChanged(
     message: `${order.orderNumber} : ${labels[oldStatus] || oldStatus} → ${labels[newStatus] || newStatus}`,
     orderId: order.id,
   })
+
+  // RÈGLE MÉTIER : aucun email ni push au client si le paiement n'est pas
+  // vérifié (en attente ou échoué). La notification admin reste créée.
+  if (order.paymentStatus !== 'paid') return
 
   // Email client pour les statuts significatifs (processing / ready / shipped / delivered / cancelled)
   const template = getStatusUpdateEmail(toEmailOrder(order), newStatus)

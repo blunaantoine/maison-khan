@@ -330,7 +330,8 @@ export async function POST(request: NextRequest) {
       await db.cartItem.deleteMany({ where: { userId: validUserId } })
     }
 
-    // Notification admin + email de confirmation (reçu) au client — non bloquant
+    // Notification admin UNIQUEMENT — aucun email au client avant le paiement
+    // vérifié (le reçu de paiement sera son premier email) — non bloquant
     await notifyOrderCreated(order)
 
     return NextResponse.json({

@@ -5,9 +5,11 @@
  * texte #2C2C2A / #6B6560. Typo de titres : Cormorant Garamond (serif système
  * de secours Georgia — les webfonts ne sont pas fiables dans les clients mail).
  *
- * 3 templates :
- *  - getOrderConfirmationEmail : reçu de commande (en attente de paiement)
- *  - getPaymentReceiptEmail    : reçu de paiement (commande payée)
+ * 2 templates :
+ *  - getPaymentReceiptEmail    : reçu de paiement (PREMIER email client — il
+ *                                part SEULEMENT une fois le paiement vérifié ;
+ *                                aucun email avant, ni si paiement en attente
+ *                                ou échoué)
  *  - getStatusUpdateEmail      : changement de statut (préparation/prête pour
  *                                retrait/expédition/livraison/annulation)
  */
@@ -156,39 +158,9 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Reçu de commande — envoyé dès la création (paiement en attente). */
-export function getOrderConfirmationEmail(order: EmailOrder): { subject: string; html: string } {
-  const name = order.customerFirstName || 'cher client'
-  const body = `
-    <h1 style="margin:0 0 8px;font-family:Georgia,serif;font-size:26px;color:#0A0A0A;">Merci pour votre commande</h1>
-    <p style="margin:0 0 4px;color:#6B6560;font-size:15px;line-height:1.6;">Bonjour ${escapeHtml(name)},</p>
-    <p style="margin:0 0 8px;color:#6B6560;font-size:15px;line-height:1.6;">
-      Nous avons bien reçu votre commande <strong style="color:#0A0A0A;">${escapeHtml(order.orderNumber)}</strong> passée le ${fmtDate()}.
-      Voici votre reçu détaillé.
-    </p>
-    <div style="background:#FDF6E8;border:1px solid #C4A77D;padding:14px 18px;margin:20px 0;">
-      <p style="margin:0;color:#8B6B2E;font-size:14px;line-height:1.5;">
-        <strong>⏳ Paiement en attente.</strong>
-        Votre commande sera confirmée dès réception du paiement.
-        Vous pouvez payer à tout moment depuis votre compte (« Mes commandes » → Réessayer le paiement).
-      </p>
-    </div>
-    ${itemsTable(order.items)}
-    ${totalsTable(order)}
-    <p style="margin:0 0 8px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9C7C5C;font-weight:600;">Récapitulatif</p>
-    <p style="margin:0 0 0;color:#6B6560;font-size:13px;">
-      Commande <strong style="color:#2C2C2A;">${escapeHtml(order.orderNumber)}</strong> · ${fmtDate()}<br>
-      Contact : ${escapeHtml(order.customerPhone)} · ${escapeHtml(order.customerEmail)}
-    </p>
-    ${shippingBlock(order)}
-    <p style="margin:24px 0 0;color:#6B6560;font-size:14px;line-height:1.6;">
-      Une question ? Répondez simplement à cet email ou écrivez-nous — notre atelier vous répond sous 24 h.
-    </p>
-    <p style="margin:16px 0 0;font-family:Georgia,serif;font-size:18px;color:#0A0A0A;">L'atelier MAISON KHAN</p>`
-  return { subject: `Commande ${order.orderNumber} reçue ✓`, html: layout(body) }
-}
-
-/** Reçu de paiement — envoyé quand le paiement est confirmé. */
+/** Reçu de paiement — envoyé quand le paiement est confirmé.
+ * C'est le PREMIER email que reçoit le client (aucun email avant paiement
+ * vérifié) : il contient le détail complet de la commande + le reçu. */
 export function getPaymentReceiptEmail(order: EmailOrder): { subject: string; html: string } {
   const name = order.customerFirstName || 'cher client'
   const body = `
