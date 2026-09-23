@@ -64,6 +64,9 @@ interface EmailStats {
   skipped: number
   total: number
   configured: boolean
+  emailoqui?: {
+    configured: boolean
+  }
 }
 
 interface PushCampaignItem {
@@ -598,10 +601,19 @@ export function AdminNotificationsTab({ onUnreadChange }: AdminNotificationsTabP
             </h3>
           </div>
           {emailStats && (
-            <div className="flex gap-4 text-xs">
+            <div className="flex flex-wrap gap-4 text-xs">
               <span className="text-[#15803D] font-medium">✓ {emailStats.sent} envoyés</span>
               <span className="text-[#B45309] font-medium">◌ {emailStats.skipped} simulés</span>
               <span className="text-[#B91C1C] font-medium">✗ {emailStats.failed} échecs</span>
+              {emailStats.emailoqui?.configured ? (
+                <span className="text-[#9C7C5C] font-medium" title="Les événements d'e-mail (envois, ouvertures, clics, rebonds) sont transmis à EmailOqui">
+                  📊 Suivi EmailOqui actif
+                </span>
+              ) : (
+                <span className="text-[#9C9A92]" title="Ajoutez EMAILOQUI_API_KEY dans le fichier .env pour activer le suivi">
+                  ◌ Suivi EmailOqui inactif
+                </span>
+              )}
             </div>
           )}
         </div>

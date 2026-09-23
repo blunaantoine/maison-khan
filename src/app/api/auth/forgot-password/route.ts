@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { sendEmail, getPasswordResetEmail } from '@/lib/email'
+import { trackEmailEvent, campaignLabel } from '@/lib/emailoqui'
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,6 +48,19 @@ export async function POST(request: NextRequest) {
     // Check if RESEND_API_KEY is configured
     if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === 're_xxx') {
       console.log('[FORGOT-PASSWORD] RESEND_API_KEY not configured, returning password directly')
+      // Journalisation (statut « skipped » = email simulé) — pas d'événement
+      // EmailOqui car aucun email réel n'est parti.
+      try {
+        await db.emailLog.create({
+          data: {
+            to: user.email,
+            subject: 'Réinitialisation de votre mot de passe',
+            type: 'password_reset',
+            status: 'skipped',
+            error: 'RESEND_API_KEY absente',
+          },
+        })
+      } catch { /* jamais bloquant */ }
       return NextResponse.json({
         message: 'Email non configuré',
         newPassword: newPassword,
@@ -61,6 +75,24 @@ export async function POST(request: NextRequest) {
         subject: 'Réinitialisation de votre mot de passe',
         html: getPasswordResetEmail(newPassword)
       })
+
+      // Télémétrie EmailOqui + journalisation admin — jamais bloquantes.
+      trackEmailEvent({
+        email: user.email,
+        type: emailResult.success ? 'SENT' : 'FAILED',
+        campaign: campaignLabel('password_reset'),
+      })
+      try {
+        await db.emailLog.create({
+          data: {
+            to: user.email,
+            subject: 'Réinitialisation de votre mot de passe',
+            type: 'password_reset',
+            status: emailResult.success ? 'sent' : 'failed',
+            error: emailResult.success ? null : String(emailResult.error ?? 'erreur inconnue'),
+          },
+        })
+      } catch { /* jamais bloquant */ }
 
       if (!emailResult.success) {
         console.error('[FORGOT-PASSWORD] Failed to send email:', emailResult.error)
@@ -77,6 +109,22 @@ export async function POST(request: NextRequest) {
       })
     } catch (emailError) {
       console.error('[FORGOT-PASSWORD] Email error:', emailError)
+      trackEmailEvent({
+        email: user.email,
+        type: 'FAILED',
+        campaign: campaignLabel('password_reset'),
+      })
+      try {
+        await db.emailLog.create({
+          data: {
+            to: user.email,
+            subject: 'Réinitialisation de votre mot de passe',
+            type: 'password_reset',
+            status: 'failed',
+            error: String(emailError),
+          },
+        })
+      } catch { /* jamais bloquant */ }
       return NextResponse.json({
         message: 'Erreur d\'envoi d\'email',
         newPassword: newPassword

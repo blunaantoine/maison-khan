@@ -167,6 +167,21 @@ else
   info "APPLE — pas encore configuré (pour l'activer : bash scripts/enable-apple.sh)"
 fi
 
+if grep -q '^EMAILOQUI_API_KEY=moq_live_..*' .env 2>/dev/null; then
+  ok "EMAILOQUI — le suivi des événements e-mail est actif"
+  if grep -q '^RESEND_WEBHOOK_SECRET=whsec_..*' .env 2>/dev/null; then
+    ok "WEBHOOK RESEND — signatures vérifiées (secret configuré)"
+  else
+    info "WEBHOOK RESEND — RESEND_WEBHOOK_SECRET absente : les événements sont"
+    echo "     acceptés sans vérification. Dashboard Resend → Webhooks :"
+    echo "     URL: https://shop.maison-khan.com/api/webhooks/resend"
+    echo "     Copiez le « signing secret » (whsec_…) dans .env puis : pm2 restart maison-khan"
+  fi
+else
+  info "EMAILOQUI — pas encore configuré (suivi e-mail inactif ; ajoutez"
+  echo "     EMAILOQUI_API_KEY=moq_live_… dans .env pour l'activer)"
+fi
+
 CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://shop.maison-khan.com 2>/dev/null)
 CODE=${CODE:-000}
 case "$CODE" in

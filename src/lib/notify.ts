@@ -10,6 +10,7 @@ import {
   pushEventNotification,
 } from '@/lib/notifications/service'
 import { NOTIFICATION_TYPES } from '@/lib/notifications/types'
+import { trackEmailEvent, campaignLabel } from '@/lib/emailoqui'
 
 /**
  * MAISON KHAN — Moteur de notifications.
@@ -128,6 +129,12 @@ async function sendClientEmail(params: {
 
   try {
     const result = await sendEmail({ to, subject: template.subject, html: template.html })
+    // Télémétrie EmailOqui (suivi des envois) — jamais bloquant.
+    trackEmailEvent({
+      email: to,
+      type: result.success ? 'SENT' : 'FAILED',
+      campaign: campaignLabel(type),
+    })
     try {
       await db.emailLog.create({
         data: {
@@ -142,6 +149,7 @@ async function sendClientEmail(params: {
     } catch { /* jamais bloquant */ }
   } catch (e) {
     console.error(`[email:error] ${type} → ${to}`, e)
+    trackEmailEvent({ email: to, type: 'FAILED', campaign: campaignLabel(type) })
     try {
       await db.emailLog.create({
         data: { to, subject: template.subject, type, orderId, status: 'failed', error: String(e) },

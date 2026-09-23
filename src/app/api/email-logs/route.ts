@@ -4,8 +4,9 @@ import { db } from '@/lib/db'
 /**
  * Journal des emails envoyés aux clients (admin / manager).
  *
- * GET /api/email-logs → { logs, stats: { sent, failed, skipped, total } }
+ * GET /api/email-logs → { logs, stats: { sent, failed, skipped, total, configured, emailoqui } }
  * Les emails « skipped » = RESEND_API_KEY absente (emails simulés).
+ * stats.emailoqui.configured = suivi EmailOqui actif (clé EMAILOQUI_API_KEY).
  */
 
 async function authorize(request: NextRequest) {
@@ -46,6 +47,9 @@ export async function GET(request: NextRequest) {
         skipped,
         total: sent + failed + skipped,
         configured: Boolean(process.env.RESEND_API_KEY),
+        emailoqui: {
+          configured: Boolean(process.env.EMAILOQUI_API_KEY),
+        },
       },
     })
   } catch (error) {
