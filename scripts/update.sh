@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================
-# MAISON KHAN — Mise à jour + activation Google (une seule ligne)
+# MAISON KHAN — Mise à jour + activation Google/Apple (une seule ligne)
 #
 # Usage 1 — déployer les nouveautés ET activer la connexion Google :
 #   cd /var/www/maison-khan && git pull && bash scripts/update.sh ID_CLIENT SECRET_CLIENT
 #
 # Usage 2 — redéployer seulement (sans toucher à Google) :
 #   cd /var/www/maison-khan && git pull && bash scripts/update.sh
+#
+# Usage 3 — activer la connexion Apple (script guidé dédié) :
+#   cd /var/www/maison-khan && bash scripts/enable-apple.sh
 #
 # Le script :
 #   1. Écrit GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET dans .env (si fournis)
@@ -17,7 +20,7 @@
 #   6. Arrête l'app (libère la mémoire — évite le crash pendant le build)
 #   7. Reconstruit l'application (bun run build)
 #   8. Redémarre l'app + pm2 save
-#   9. Vérifie la boutique, le bouton Google et le site web
+#   9. Vérifie la boutique, le bouton Google, le bouton Apple et le site web
 #
 # Sûr : ne touche ni à la base de données, ni au code.
 # ============================================================
@@ -152,6 +155,16 @@ if echo "$STATUS" | grep -q '"configured":true'; then
   echo "     https://shop.maison-khan.com/api/auth/google/callback"
 else
   info "GOOGLE — pas encore configuré sur ce serveur (bouton masqué)"
+fi
+
+STATUS_APPLE=$(curl -s -m 5 http://localhost:3000/api/auth/apple/status 2>/dev/null)
+if echo "$STATUS_APPLE" | grep -q '"configured":true'; then
+  ok "APPLE — le bouton « Continuer avec Apple » est actif"
+  echo "   ↳ Vérifie dans Apple Developer → ton Services ID → Sign in with Apple :"
+  echo "     le Return URL doit être :"
+  echo "     https://shop.maison-khan.com/api/auth/apple/callback"
+else
+  info "APPLE — pas encore configuré (pour l'activer : bash scripts/enable-apple.sh)"
 fi
 
 CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://shop.maison-khan.com 2>/dev/null)

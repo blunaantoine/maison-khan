@@ -1060,6 +1060,7 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [googleEnabled, setGoogleEnabled] = useState(false)
+  const [appleEnabled, setAppleEnabled] = useState(false)
   const [aiAnalyzing, setAiAnalyzing] = useState(false)
 
   // Dashboard State
@@ -1212,7 +1213,13 @@ export default function Home() {
       .then(data => { if (data?.configured) setGoogleEnabled(true) })
       .catch(() => {})
 
-    // Retour de Google : ?auth=google (succès) ou ?auth=error (échec).
+    // Connexion Apple : disponible sur ce serveur ? (le bouton ne s'affiche que si oui)
+    fetch('/api/auth/apple/status')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (data?.configured) setAppleEnabled(true) })
+      .catch(() => {})
+
+    // Retour de Google/Apple : ?auth=google|apple (succès) ou ?auth=error (échec).
     // On nettoie l'URL immédiatement puis on affichera le toast selon le résultat.
     const params = new URLSearchParams(window.location.search)
     const authFlag = params.get('auth')
@@ -1229,13 +1236,15 @@ export default function Home() {
             setUser(data.user)
             if (authFlag === 'google') {
               showToast('Bienvenue', 'Connexion avec Google réussie')
+            } else if (authFlag === 'apple') {
+              showToast('Bienvenue', 'Connexion avec Apple réussie')
             }
           }
         } else {
           // Not authenticated - clear any stale localStorage from old version
           localStorage.removeItem('user')
-          if (authFlag === 'google' || authFlag === 'error') {
-            showToast('Erreur', 'La connexion Google a échoué. Réessayez.', 'error')
+          if (authFlag === 'google' || authFlag === 'apple' || authFlag === 'error') {
+            showToast('Erreur', 'La connexion a échoué. Réessayez.', 'error')
           }
         }
       } catch {
@@ -2188,27 +2197,45 @@ export default function Home() {
             forgotPasswordLoading={forgotPasswordLoading}
           />
 
-          {/* Connexion avec Google (affichée uniquement si configurée sur le serveur) */}
-          {googleEnabled && (
+          {/* Connexions sociales (affichées uniquement si configurées sur le serveur) */}
+          {(appleEnabled || googleEnabled) && (
             <>
               <div className="flex items-center gap-3 mt-5 mb-4" aria-hidden="true">
                 <div className="flex-1 h-px bg-[#E5E0DA]" />
                 <span className="text-[10px] uppercase tracking-[0.25em] text-[#6B6560]">ou</span>
                 <div className="flex-1 h-px bg-[#E5E0DA]" />
               </div>
-              <button
-                type="button"
-                onClick={() => { window.location.href = '/api/auth/google' }}
-                className="w-full flex items-center justify-center gap-3 p-3 bg-white border border-[#E5E0DA] hover:border-[#9C7C5C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C] transition-colors"
-              >
-                <svg className="w-5 h-5 shrink-0" viewBox="0 0 48 48" aria-hidden="true">
-                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                </svg>
-                <span className="text-sm text-[#0A0A0A]">Continuer avec Google</span>
-              </button>
+              <div className="flex flex-col gap-3">
+                {/* Continuer avec Apple */}
+                {appleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = '/api/auth/apple' }}
+                    className="w-full flex items-center justify-center gap-3 p-3 bg-[#0A0A0A] border border-[#0A0A0A] hover:bg-[#191817] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C] transition-colors"
+                  >
+                    <svg className="w-5 h-5 shrink-0" viewBox="0 0 384 512" aria-hidden="true">
+                      <path fill="#FFFFFF" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
+                    </svg>
+                    <span className="text-sm text-white">Continuer avec Apple</span>
+                  </button>
+                )}
+                {/* Continuer avec Google */}
+                {googleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = '/api/auth/google' }}
+                    className="w-full flex items-center justify-center gap-3 p-3 bg-white border border-[#E5E0DA] hover:border-[#9C7C5C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C] transition-colors"
+                  >
+                    <svg className="w-5 h-5 shrink-0" viewBox="0 0 48 48" aria-hidden="true">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                    </svg>
+                    <span className="text-sm text-[#0A0A0A]">Continuer avec Google</span>
+                  </button>
+                )}
+              </div>
               <p className="text-[11px] text-[#6B6560] text-center mt-3 leading-relaxed">
                 {authMode === 'login'
                   ? "Connectez-vous en un clic, sans mot de passe."
@@ -2219,7 +2246,7 @@ export default function Home() {
         </div>
       </div>
     )
-  }, [showAuthModal, authMode, showPassword, forgotPasswordLoading, googleEnabled, showToast, setUser, setShowAuthModal, setAuthMode, setShowPassword, setForgotPasswordLoading])
+  }, [showAuthModal, authMode, showPassword, forgotPasswordLoading, googleEnabled, appleEnabled, showToast, setUser, setShowAuthModal, setAuthMode, setShowPassword, setForgotPasswordLoading])
 
   // Checkout Modal
   const CheckoutModal = () => {
