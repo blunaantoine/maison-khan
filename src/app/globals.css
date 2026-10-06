@@ -211,11 +211,13 @@
   transform: translateY(0);
 }
 
-/* Product Cards */
+/* Product Cards — photo + nom uniquement (infos produit sur /produit/[id]) */
 .product-card {
+  cursor: pointer;
+}
+.product-card-media {
   position: relative;
   overflow: hidden;
-  cursor: pointer;
   background: #E5E0DA;
 }
 .product-card img {
@@ -227,32 +229,13 @@
 .product-card:hover img {
   transform: scale(1.05);
 }
-
-.product-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, rgba(10,10,10,0.7) 0%, transparent 50%);
-  opacity: 0;
-  transition: opacity 0.4s ease;
+.product-card-name {
+  letter-spacing: 0.02em;
+  line-height: 1.4;
 }
-.product-card:hover .product-overlay {
-  opacity: 1;
-}
-
-.product-info {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 1.5rem;
-  transform: translateY(20px);
-  opacity: 0;
-  transition: all 0.4s ease;
-  color: #F8F6F3;
-}
-.product-card:hover .product-info {
-  transform: translateY(-10px);
-  opacity: 1;
+.product-card:hover .product-card-name {
+  color: #9C7C5C;
+  transition: color 0.4s ease;
 }
 
 /* Buttons */

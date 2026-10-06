@@ -2320,35 +2320,21 @@ export default function Home() {
     )
   }
 
-  // Product card component
+  // Product card component — photo + nom uniquement.
+  // Prix, stock, genre, sous-catégorie : uniquement sur la page produit (/produit/[id])
   const ProductCard = ({ product, index }: { product: Product; index: number }) => {
-    const stockClass = product.totalStock === 0 ? 'text-red-600' : product.totalStock <= 5 ? 'text-orange-600' : 'text-[#15803D]'
-    const stockLabel = product.totalStock === 0 ? 'Rupture de stock' : product.totalStock <= 5 ? `Stock limité (${product.totalStock})` : 'En stock'
-    const genreLabel = product.genre === 'homme' ? 'Homme' : product.genre === 'femme' ? 'Femme' : 'Mixte'
-
     return (
       <article
-        className="product-card aspect-[3/4] cursor-pointer"
+        className="product-card cursor-pointer"
         style={{ transitionDelay: `${(index % 4) * 0.1}s` }}
         onClick={() => {
           router.push(`/produit/${product.id}`)
         }}
       >
-        <img src={product.image || 'https://placehold.co/400x500?text=Image'} alt={product.name} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x500?text=Image' }} />
-        <div className="product-overlay"></div>
-        <div className="product-info">
-          <div className="flex justify-between items-center mb-2">
-            <p className="text-xs tracking-widest uppercase opacity-70">{product.subCategory || ''}</p>
-            <span className="text-xs opacity-70">{genreLabel}</span>
-          </div>
-          <h3 className="font-display text-xl mb-1" style={{ fontFamily: "'Cormorant Garamond', serif" }}>{product.name}</h3>
-          <div className="flex justify-between items-center">
-            <p className="text-lg">
-              {product.minPrice > 0 ? (<><span className="text-xs opacity-70">À partir de </span>{formatPrice(product.minPrice)}</>) : 'Prix sur demande'}
-            </p>
-            <p className={`text-xs ${stockClass} border border-current px-2 py-0.5 rounded-full`}>{stockLabel}</p>
-          </div>
+        <div className="product-card-media aspect-[3/4]">
+          <img src={product.image || 'https://placehold.co/400x500?text=Image'} alt={product.name} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x500?text=Image' }} />
         </div>
+        <h3 className="product-card-name font-display text-lg text-[#0A0A0A] text-center mt-4 mb-1" style={{ fontFamily: "'Cormorant Garamond', serif" }}>{product.name}</h3>
       </article>
     )
   }
