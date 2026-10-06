@@ -118,7 +118,7 @@ function buildSystemPrompt(catalog: string, siteContent: string): string {
 ━━━ CONTACT ━━━
 - WhatsApp / téléphone : +228 70 16 67 67 (le canal privilégié pour toute demande personnelle).
 - Email : contact@maison-khan.com (technique@maison-khan.com pour le support technique).
-- Réseaux sociaux : TikTok (@maison..khan7), Instagram (@maisonkhan7), Facebook (Maison KHAN).
+- Réseaux sociaux : TikTok (@maison..khan7), Instagram (@maisonkhanofficial).
 ${siteContent ? `\n━━━ CONTENUS DU SITE (modifiables par la boutique) ━━━\n${siteContent}\n` : ''}
 ━━━ CATALOGUE RÉEL DU SITE (à jour — source de vérité pour les prix, tailles, disponibilités) ━━━
 ${catalog}
