@@ -245,6 +245,21 @@ model HeroSlide {
   updatedAt DateTime @updatedAt
 }
 
+// ─── Images de l'atelier (production artisanale) — carrousels accueil + à propos ───
+// Ajoutées/gérées depuis le panneau admin (onglet Produits → « Images de l'atelier »).
+model AtelierImage {
+  id        String   @id @default(cuid())
+  image     String   // data URL base64 (compressée côté admin) ou URL externe
+  caption   String?  // légende optionnelle (ex. « Coupe du cuir — atelier de Lomé »)
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([order])
+  @@index([isActive])
+}
+
 model SiteSetting {
   id        String   @id @default(cuid())
   key       String   @unique

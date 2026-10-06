@@ -9,6 +9,8 @@ import { AdminUsersTab } from '@/components/admin/AdminUsersTab'
 import { AdminNotificationsTab } from '@/components/admin/AdminNotificationsTab'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { ClientNotificationsTab } from '@/components/notifications/ClientNotificationsTab'
+import AtelierCarousel, { type AtelierImageData } from '@/components/atelier/AtelierCarousel'
+import SiteChatbot from '@/components/chat/SiteChatbot'
 import { checkPushState, subscribeToPush, unsubscribeFromPush, type PushClientState } from '@/lib/push-client'
 
 // Auth Form Component - Separate to prevent re-renders
@@ -967,6 +969,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([])
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>([])
+  const [atelierImages, setAtelierImages] = useState<AtelierImageData[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [currentProduct, setCurrentProduct] = useState<Product | null>(null)
   const [selectedSize, setSelectedSize] = useState<string | null>(null)
@@ -1690,13 +1693,14 @@ export default function Home() {
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        const [productsRes, menuRes, slidesRes, logoRes, maisonImageRes, contentRes] = await Promise.all([
+        const [productsRes, menuRes, slidesRes, logoRes, maisonImageRes, contentRes, atelierRes] = await Promise.all([
           fetch('/api/products'),
           fetch('/api/menu'),
           fetch('/api/slides'),
           fetch('/api/settings/logo'),
           fetch('/api/settings/maison-image'),
-          fetch('/api/content')
+          fetch('/api/content'),
+          fetch('/api/atelier-images')
         ])
 
         if (productsRes.ok) setProducts(await productsRes.json())
@@ -1708,6 +1712,7 @@ export default function Home() {
           }
         }
         if (slidesRes.ok) setHeroSlides(await slidesRes.json())
+        if (atelierRes.ok) setAtelierImages(await atelierRes.json())
         if (logoRes.ok) {
           const data = await logoRes.json()
           setLogo(data?.value || '/logo.png')
@@ -2718,6 +2723,11 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Atelier — carrousel d'images de production (géré depuis l'admin) */}
+          {atelierImages.length > 0 && (
+            <AtelierCarousel images={atelierImages} title="Dans Notre Atelier" subtitle="Le savoir-faire en images" />
+          )}
+
           {/* Brand Statement */}
           <div className="relative py-32 lg:py-48 bg-[#0A0A0A] text-[#F8F6F3] grain overflow-hidden">
             <div className="relative container mx-auto px-6 lg:px-12 text-center">
@@ -2848,6 +2858,13 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+
+              {/* Atelier — carrousel d'images de production (géré depuis l'admin) */}
+              {atelierImages.length > 0 && (
+                <div className="mt-20">
+                  <AtelierCarousel contained images={atelierImages} title="Nos Artisans au Travail" subtitle="Production en atelier" />
+                </div>
+              )}
 
               {/* INTERNATIONAL ORDERS SECTION */}
               <div className="mt-20 pt-16 border-t border-[#6B6560]/10">
@@ -2993,6 +3010,13 @@ export default function Home() {
                 </div>
                 <div className="mb-12 animate-on-scroll">
                   <a href={getWhatsAppLink('Bonjour MAISON KHAN, je souhaite vous contacter.')} target="_blank" rel="noopener" className="btn-whatsapp inline-flex" style={{ width: 'auto' }}><span>Discuter sur WhatsApp</span></a>
+                </div>
+
+                {/* Assistant virtuel — chatbot intelligent (maîtrise le contenu du site) */}
+                <div className="mb-12 animate-on-scroll">
+                  <p className="text-xs uppercase tracking-widest text-[#6B6560] mb-6">Ou parlez à notre assistant virtuel</p>
+                  <SiteChatbot />
+                  <p className="text-[11px] text-[#9C9A92] mt-3">Il connaît nos créations, tailles, paiements et livraisons. Pour une demande personnelle, WhatsApp reste le plus rapide.</p>
                 </div>
                 <div className="animate-on-scroll">
                   <p className="text-xs uppercase tracking-widest text-[#6B6560] mb-6">Suivez-nous</p>
@@ -3705,6 +3729,87 @@ export default function Home() {
                           else { showToast("Erreur", "Impossible d'ajouter l'image", "error") }
                         } catch (error) { showToast("Erreur", "Erreur lors du traitement de l'image", "error") }
                       }
+                    }} />
+                  </label>
+                </div>
+              </div>
+
+              {/* Atelier Images Management — carrousels accueil + à propos */}
+              <div className="bg-white p-6 shadow-sm mb-8">
+                <h3 className="font-display text-lg text-[#0A0A0A] mb-1" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Images de l&apos;atelier</h3>
+                <p className="text-xs text-[#6B6560] mb-4">Affichées dans le carrousel « Dans Notre Atelier » (accueil) et « Nos Artisans au Travail » (à propos). La légende apparaît sur l&apos;image ; l&apos;ordre se règle avec les flèches.</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {atelierImages.map((img, idx) => (
+                    <div key={img.id} className="relative bg-white overflow-hidden group border border-[#E5E0DA] self-start flex flex-col">
+                      <div className="relative aspect-[4/3] bg-[#EDE8E1] overflow-hidden">
+                        <img src={img.image} alt={img.caption || 'Image atelier'} className="w-full h-full object-cover" />
+                      </div>
+                      <button className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity z-10" onClick={async () => {
+                        if (confirm('Supprimer cette image de l\'atelier ?')) {
+                          try {
+                            const res = await fetch(`/api/atelier-images/${img.id}`, { method: 'DELETE' })
+                            if (res.ok) { setAtelierImages(prev => prev.filter(a => a.id !== img.id)); showToast("Succès", "L'image a été supprimée") }
+                            else showToast("Erreur", "Impossible de supprimer l'image", "error")
+                          } catch (error) { showToast("Erreur", "Erreur lors de la suppression", "error") }
+                        }
+                      }}>×</button>
+                      <div className="absolute top-2 left-2 flex gap-1 z-10">
+                        <button disabled={idx === 0} title="Monter dans le carrousel" aria-label="Monter" className="bg-[#F8F6F3]/90 border border-[#E5E0DA] text-[#0A0A0A] rounded w-6 h-6 flex items-center justify-center text-xs disabled:opacity-30 hover:border-[#9C7C5C] transition-colors" onClick={async () => {
+                          if (idx === 0) return
+                          const neighbor = atelierImages[idx - 1]
+                          try {
+                            await Promise.all([
+                              fetch(`/api/atelier-images/${img.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: neighbor.order }) }),
+                              fetch(`/api/atelier-images/${neighbor.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: img.order }) }),
+                            ])
+                            setAtelierImages(prev => prev.map(a => a.id === img.id ? { ...a, order: neighbor.order } : a.id === neighbor.id ? { ...a, order: img.order } : a).sort((a, b) => a.order - b.order))
+                          } catch (error) { showToast("Erreur", "Erreur lors du déplacement", "error") }
+                        }}>↑</button>
+                        <button disabled={idx === atelierImages.length - 1} title="Descendre dans le carrousel" aria-label="Descendre" className="bg-[#F8F6F3]/90 border border-[#E5E0DA] text-[#0A0A0A] rounded w-6 h-6 flex items-center justify-center text-xs disabled:opacity-30 hover:border-[#9C7C5C] transition-colors" onClick={async () => {
+                          if (idx >= atelierImages.length - 1) return
+                          const neighbor = atelierImages[idx + 1]
+                          try {
+                            await Promise.all([
+                              fetch(`/api/atelier-images/${img.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: neighbor.order }) }),
+                              fetch(`/api/atelier-images/${neighbor.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: img.order }) }),
+                            ])
+                            setAtelierImages(prev => prev.map(a => a.id === img.id ? { ...a, order: neighbor.order } : a.id === neighbor.id ? { ...a, order: img.order } : a).sort((a, b) => a.order - b.order))
+                          } catch (error) { showToast("Erreur", "Erreur lors du déplacement", "error") }
+                        }}>↓</button>
+                      </div>
+                      <input
+                        defaultValue={img.caption || ''}
+                        placeholder="Légende (optionnelle)"
+                        maxLength={120}
+                        aria-label="Légende de l'image"
+                        className="w-full text-xs px-2 py-2 border-t border-[#E5E0DA] bg-white text-[#191817] placeholder:text-[#9C9A92] focus:outline-none focus:border-[#9C7C5C]"
+                        onBlur={async (e) => {
+                          const value = e.target.value.trim()
+                          if (value === (img.caption || '')) return
+                          try {
+                            const res = await fetch(`/api/atelier-images/${img.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caption: value }) })
+                            if (res.ok) {
+                              setAtelierImages(prev => prev.map(a => a.id === img.id ? { ...a, caption: value || null } : a))
+                              showToast("Succès", "Légende mise à jour")
+                            } else showToast("Erreur", "Impossible de mettre à jour la légende", "error")
+                          } catch (error) { showToast("Erreur", "Erreur lors de la mise à jour", "error") }
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <label className="aspect-[4/3] bg-[#EDE8E1] border-2 border-dashed border-[#6B6560] flex flex-col items-center justify-center cursor-pointer hover:border-[#9C7C5C] transition-colors self-start">
+                    <svg className="w-6 h-6 text-[#6B6560] mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <span className="text-[#6B6560] text-xs">+ Image atelier</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      try {
+                        const compressedBase64 = await compressImage(file, 1600, 0.85)
+                        const res = await fetch('/api/atelier-images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: compressedBase64 }) })
+                        if (res.ok) { const created = await res.json(); setAtelierImages(prev => [...prev, created]); showToast("Succès", "L'image a été ajoutée à l'atelier") }
+                        else showToast("Erreur", "Impossible d'ajouter l'image", "error")
+                      } catch (error) { showToast("Erreur", "Erreur lors du traitement de l'image", "error") }
+                      e.target.value = ''
                     }} />
                   </label>
                 </div>
