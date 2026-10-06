@@ -58,7 +58,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "fr_FR",
-    url: "https://maisonkhan.com",
+    url: "https://maison-khan.com",
     siteName: "MAISON KHAN",
     title: "MAISON KHAN | Chaussures de Luxe Made in Africa",
     description: "Chaussures de luxe artisanales confectionnées au Togo. Made in Africa.",
@@ -94,7 +94,7 @@ export const metadata: Metadata = {
   },
   
   // Autres métadonnées
-  metadataBase: new URL("https://maisonkhan.com"),
+  metadataBase: new URL("https://maison-khan.com"),
   alternates: {
     canonical: "/",
   },

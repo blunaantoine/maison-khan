@@ -2,7 +2,7 @@ import { MetadataRoute } from 'next'
 import { db } from '@/lib/db'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://shop.maison-khan.com'
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://maison-khan.com'
 
   // Page d'accueil
   const routes: MetadataRoute.Sitemap = [

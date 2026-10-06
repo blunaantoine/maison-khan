@@ -152,7 +152,7 @@ if echo "$STATUS" | grep -q '"configured":true'; then
   ok "GOOGLE — le bouton « Continuer avec Google » est actif"
   echo "   ↳ Vérifie dans Google Cloud Console → Identifiants → ton ID client :"
   echo "     l'URI de redirection autorisée doit être :"
-  echo "     https://shop.maison-khan.com/api/auth/google/callback"
+  echo "     https://maison-khan.com/api/auth/google/callback"
 else
   info "GOOGLE — pas encore configuré sur ce serveur (bouton masqué)"
 fi
@@ -162,7 +162,7 @@ if echo "$STATUS_APPLE" | grep -q '"configured":true'; then
   ok "APPLE — le bouton « Continuer avec Apple » est actif"
   echo "   ↳ Vérifie dans Apple Developer → ton Services ID → Sign in with Apple :"
   echo "     le Return URL doit être :"
-  echo "     https://shop.maison-khan.com/api/auth/apple/callback"
+  echo "     https://maison-khan.com/api/auth/apple/callback"
 else
   info "APPLE — pas encore configuré (pour l'activer : bash scripts/enable-apple.sh)"
 fi
@@ -174,7 +174,7 @@ if grep -q '^EMAILOQUI_API_KEY=moq_live_..*' .env 2>/dev/null; then
   else
     info "WEBHOOK RESEND — RESEND_WEBHOOK_SECRET absente : les événements sont"
     echo "     acceptés sans vérification. Dashboard Resend → Webhooks :"
-    echo "     URL: https://shop.maison-khan.com/api/webhooks/resend"
+    echo "     URL: https://maison-khan.com/api/webhooks/resend"
     echo "     Copiez le « signing secret » (whsec_…) dans .env puis : pm2 restart maison-khan"
   fi
 else
@@ -182,16 +182,16 @@ else
   echo "     EMAILOQUI_API_KEY=moq_live_… dans .env pour l'activer)"
 fi
 
-CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://shop.maison-khan.com 2>/dev/null)
+CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://maison-khan.com 2>/dev/null)
 CODE=${CODE:-000}
 case "$CODE" in
   200|301|302|307|308)
-    ok "SITE WEB — https://shop.maison-khan.com répond (HTTP $CODE)"
+    ok "SITE WEB — https://maison-khan.com répond (HTTP $CODE)"
     echo ""
     echo "🎉 MISE À JOUR TERMINÉE ! Rafraîchis ton navigateur (Ctrl+F5)"
     ;;
   *)
-    bad "SITE WEB — shop.maison-khan.com : HTTP $CODE (ou pas de réponse)"
+    bad "SITE WEB — maison-khan.com : HTTP $CODE (ou pas de réponse)"
     info "Envoie-moi une capture d'écran de tout cet écran"
     ;;
 esac

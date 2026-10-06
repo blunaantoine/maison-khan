@@ -54,7 +54,7 @@ export async function generateMetadata({
     product.description?.slice(0, 160) ||
     `Découvrez ${product.name} — ${product.subCategory || product.category} Maison Khan. ${minPrice > 0 ? 'À partir de ' + formatPrice(minPrice) + '.' : 'Prix sur demande.'}`;
 
-  const siteUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://shop.maison-khan.com';
+  const siteUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://maison-khan.com';
 
   return {
     title,

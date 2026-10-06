@@ -25,8 +25,8 @@ import type { NextRequest } from 'next/server'
  *
  * Dans Apple Developer (developer.apple.com) → Certificates, Identifiers & Profiles :
  *  1. Identifiers → + → Services ID → activer « Sign in with Apple » →
- *     Domain : shop.maison-khan.com
- *     Return URL : https://shop.maison-khan.com/api/auth/apple/callback
+ *     Domain : maison-khan.com
+ *     Return URL : https://maison-khan.com/api/auth/apple/callback
  *  2. Keys → + → cocher « Sign in with Apple » → associer le Services ID →
  *     noter le Key ID et télécharger le fichier .p8 (téléchargeable UNE fois).
  *

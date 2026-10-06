@@ -22,7 +22,7 @@ import type { NextRequest } from 'next/server'
  *
  * Dans Google Cloud Console → « Identifiants » → « ID client OAuth 2.0 »,
  * ajoutez l'URI de redirection autorisée :
- *   https://shop.maison-khan.com/api/auth/google/callback
+ *   https://maison-khan.com/api/auth/google/callback
  */
 
 export const OAUTH_STATE_COOKIE = 'mk_oauth_state'

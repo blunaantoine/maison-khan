@@ -14,8 +14,8 @@
 #      Puis ouvre ce Services ID → coche « Sign in with Apple » → Configure :
 #        - Primary App ID : (choisis l'app Maison Khan si tu en as une,
 #          sinon crée d'abord un App ID classique)
-#        - Domains     : shop.maison-khan.com
-#        - Return URLs : https://shop.maison-khan.com/api/auth/apple/callback
+#        - Domains     : maison-khan.com
+#        - Return URLs : https://maison-khan.com/api/auth/apple/callback
 #      → Continue → Save → (Apple peut demander à vérifier le domaine :
 #         télécharge le fichier .txt et je te dirai où le placer)
 #
@@ -99,9 +99,9 @@ if echo "$STATUS" | grep -q '"configured":true'; then
   echo "🎉 Dernière étape côté Apple : vérifie dans Certificates, Identifiers &"
   echo "   Profiles → ton Services ID → Sign in with Apple → Configure que le"
   echo "   Return URL est exactement :"
-  echo "   https://shop.maison-khan.com/api/auth/apple/callback"
+  echo "   https://maison-khan.com/api/auth/apple/callback"
   echo ""
-  echo "   Puis teste sur https://shop.maison-khan.com (Ctrl+F5) → Connexion."
+  echo "   Puis teste sur https://maison-khan.com (Ctrl+F5) → Connexion."
   echo "   Si Apple affiche « invalid_client », le Services ID ou le Return URL"
   echo "   est mal saisi côté Apple Developer."
 else

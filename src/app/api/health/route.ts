@@ -7,7 +7,7 @@ import { db } from '@/lib/db'
  * Objectif : détecter AVANT vos clients que le site est tombé.
  * Config UptimeRobot (gratuit) :
  *   - Type     : HTTP(s)
- *   - URL      : https://shop.maison-khan.com/api/health
+ *   - URL      : https://maison-khan.com/api/health
  *   - Intervalle : 5 minutes
  *   - Alerte   : email/SMS si 2 échecs consécutifs ("keyword" : "ok")
  *
