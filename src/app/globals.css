@@ -535,6 +535,18 @@
   scrollbar-width: none;
 }
 
+/* ===== Barre de défilement principale invisible (scroll conservé) ===== */
+html {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE / ancien Edge */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+  width: 0;
+  height: 0;
+}
+
 /* Floating Cart Button */
 .cart-fab {
   position: fixed;
