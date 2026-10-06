@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import ZAI from 'z-ai-web-dev-sdk'
+import { buildLocalReply } from './local-fallback'
 
 /**
  * MAISON KHAN — Assistant virtuel (chatbot de la section Contact).
@@ -169,23 +170,26 @@ export async function POST(request: NextRequest) {
     ])
     const systemPrompt = buildSystemPrompt(catalog, siteContent)
 
-    // ── Appel LLM (z-ai-web-dev-sdk, backend uniquement) ──
-    const zai = await ZAI.create()
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: 'assistant', content: systemPrompt },
-        ...history.map((m) => ({ role: m.role, content: m.content })),
-      ],
-      thinking: { type: 'disabled' },
-    })
-
-    const reply = completion.choices[0]?.message?.content?.trim()
+    // ── Appel LLM, avec repli local si le moteur n'est pas disponible ──
+    // (ex. VPS sans .z-ai-config : l'assistant répond alors en mode dégradé
+    //  depuis les connaissances réelles de la boutique + le catalogue en base)
+    let reply: string | null = null
+    try {
+      const zai = await ZAI.create()
+      const completion = await zai.chat.completions.create({
+        messages: [
+          { role: 'assistant', content: systemPrompt },
+          ...history.map((m) => ({ role: m.role, content: m.content })),
+        ],
+        thinking: { type: 'disabled' },
+      })
+      reply = completion.choices[0]?.message?.content?.trim() || null
+    } catch {
+      reply = null // moteur IA indisponible → mode dégradé local
+    }
     if (!reply) {
-      console.error('[chat] Réponse vide du modèle')
-      return NextResponse.json(
-        { error: 'Une erreur est survenue, réessayez.' },
-        { status: 502 }
-      )
+      console.warn('[chat] Moteur IA indisponible — réponse locale (catalogue réel)')
+      reply = buildLocalReply(lastUser.content, catalog)
     }
 
     return NextResponse.json({ reply })
