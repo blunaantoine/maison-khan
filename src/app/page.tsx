@@ -748,7 +748,10 @@ interface MenuImage {
 
 interface HeroSlide {
   id: string
-  image: string
+  image: string | null
+  /** Slides vidéo : URL de streaming (/api/slides/{id}/media) — le base64
+   *  ne circule jamais dans la liste, pour garder la page d'accueil légère. */
+  videoUrl?: string | null
   type: string
   title: string | null
   subtitle: string | null
@@ -1755,7 +1758,19 @@ export default function Home() {
     return () => {
       if (slideIntervalRef.current) clearInterval(slideIntervalRef.current)
   }
-  }, [heroSlides, showAuthModal, showProductModal, showCheckoutModal, showProductFormModal, showSubCatModal])
+  }, [heroSlides, currentSlide, showAuthModal, showProductModal, showCheckoutModal, showProductFormModal, showSubCatModal])
+
+  // Vidéos du hero : seule la slide active lit sa vidéo — les autres sont
+  // mises en pause (économie CPU/batterie, une vidéo reste audible = muted).
+  useEffect(() => {
+    heroSlides.forEach((slide, index) => {
+      if (slide.type !== 'video') return
+      const video = document.getElementById(`hero-video-${slide.id}`) as HTMLVideoElement | null
+      if (!video) return
+      if (index === currentSlide) video.play().catch(() => {})
+      else video.pause()
+    })
+  }, [currentSlide, heroSlides])
 
   // Scroll handler
   useEffect(() => {
@@ -2570,7 +2585,7 @@ export default function Home() {
                   <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ${currentSlide === index ? 'opacity-100' : 'opacity-0'}`}>
                     {slide.type === 'video' ? (
                       <div className="relative w-full h-full">
-                        <video src={slide.image} className="w-full h-full object-cover" autoPlay muted={videoMuted} loop playsInline preload="metadata" id={`hero-video-${slide.id}`} onError={(e) => { const container = (e.target as HTMLVideoElement).parentElement; if (container) container.innerHTML = '<div class="w-full h-full bg-gray-800 flex items-center justify-center"><div class="text-center text-white p-8"><p class="text-lg font-medium">Vidéo non disponible</p></div></div>' }} onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}) }} />
+                        <video src={slide.videoUrl || slide.image || undefined} className="w-full h-full object-cover" autoPlay muted={videoMuted} loop playsInline preload="metadata" id={`hero-video-${slide.id}`} onError={(e) => { const container = (e.target as HTMLVideoElement).parentElement; if (container) container.innerHTML = '<div class="w-full h-full bg-gray-800 flex items-center justify-center"><div class="text-center text-white p-8"><p class="text-lg font-medium">Vidéo non disponible</p></div></div>' }} onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}) }} />
                       </div>
                     ) : (
                       <img src={slide.image || 'https://placehold.co/1920x1080?text=Slide'} alt={slide.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/1920x1080?text=Slide' }} />
@@ -3698,11 +3713,12 @@ export default function Home() {
 
               {/* Hero Slides Management */}
               <div className="bg-white p-6 shadow-sm mb-8">
-                <h3 className="font-display text-lg text-[#0A0A0A] mb-4" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Images et Vidéos du Hero Slider</h3>
+                <h3 className="font-display text-lg text-[#0A0A0A] mb-1" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Images et Vidéos du Hero Slider</h3>
+                <p className="text-xs text-[#6B6560] mb-4">Première bannière de la page d'accueil. Images : compressées automatiquement. Vidéos : 9 Mo maximum, MP4 conseillé (courte séquence de l'atelier ou des créations).</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {heroSlides.map((slide) => (
                     <div key={slide.id} className="relative aspect-video bg-[#EDE8E1] overflow-hidden group">
-                      {slide.type === 'video' ? <video src={slide.image || undefined} className="w-full h-full object-cover" muted /> : <img src={slide.image || 'https://placehold.co/400x225?text=Slide'} alt="" className="w-full h-full object-cover" />}
+                      {slide.type === 'video' ? <video src={slide.videoUrl || slide.image || undefined} className="w-full h-full object-cover" muted preload="metadata" /> : <img src={slide.image || 'https://placehold.co/400x225?text=Slide'} alt="" className="w-full h-full object-cover" />}
                       {slide.type === 'video' && <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">Vidéo</div>}
                       <button className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity" onClick={async () => {
                         if (confirm('Supprimer ce média ?')) {
@@ -3726,6 +3742,36 @@ export default function Home() {
                           else { showToast("Erreur", "Impossible d'ajouter l'image", "error") }
                         } catch (error) { showToast("Erreur", "Erreur lors du traitement de l'image", "error") }
                       }
+                    }} />
+                  </label>
+                  <label className="aspect-video bg-[#EDE8E1] border-2 border-dashed border-[#6B6560] flex flex-col items-center justify-center cursor-pointer hover:border-[#9C7C5C] transition-colors">
+                    <svg className="w-6 h-6 text-[#6B6560] mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    <span className="text-[#6B6560] text-xs">+ Vidéo</span>
+                    <input type="file" accept="video/mp4,video/webm,video/quicktime,video/*" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (!file) return
+                      if (file.size > 9 * 1024 * 1024) {
+                        showToast("Vidéo trop lourde", "9 Mo maximum — raccourcissez-la ou compressez-la (MP4 conseillé)", "error")
+                        return
+                      }
+                      try {
+                        const dataUrl = await new Promise<string>((resolve, reject) => {
+                          const reader = new FileReader()
+                          reader.onload = () => resolve(reader.result as string)
+                          reader.onerror = () => reject(new Error('read'))
+                          reader.readAsDataURL(file)
+                        })
+                        const res = await fetch('/api/slides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: dataUrl, type: 'video', interval: 8000 }) })
+                        if (res.ok) {
+                          const newSlide = await res.json()
+                          setHeroSlides(prev => [...prev.map(s => ({ ...s, image: s.type === 'video' && !s.videoUrl && s.image ? null : s.image })), { ...newSlide, image: null, videoUrl: `/api/slides/${newSlide.id}/media?v=${Date.now()}` }])
+                          showToast("Succès", "La vidéo a été ajoutée au slider")
+                        } else {
+                          const data = await res.json().catch(() => ({}))
+                          showToast("Erreur", data?.error || "Impossible d'ajouter la vidéo", "error")
+                        }
+                      } catch (error) { showToast("Erreur", "Erreur lors de la lecture de la vidéo", "error") }
                     }} />
                   </label>
                 </div>
