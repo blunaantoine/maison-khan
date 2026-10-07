@@ -84,6 +84,10 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const objUrlRef = useRef<string | null>(null)
+  // Graphe audio de l'export : créé une fois par élément vidéo (on ne peut
+  // appeler createMediaElementSource qu'une fois), réutilisé si l'admin
+  // découpe plusieurs extraits dans la même session.
+  const audioGraphRef = useRef<{ actx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null)
   const previewRef = useRef(false)
   const startRef = useRef(0)
   const endRef = useRef(0)
@@ -115,6 +119,10 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
     setProgress(0)
     setDimensions(null)
     durationReadyRef.current = false
+    if (audioGraphRef.current) {
+      try { void audioGraphRef.current.actx.close() } catch { /* déjà fermé */ }
+      audioGraphRef.current = null
+    }
     if (objUrlRef.current) { URL.revokeObjectURL(objUrlRef.current); objUrlRef.current = null }
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -132,6 +140,10 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
   // Nettoyage final au démontage.
   useEffect(() => {
     return () => {
+      if (audioGraphRef.current) {
+        try { void audioGraphRef.current.actx.close() } catch { /* déjà fermé */ }
+        audioGraphRef.current = null
+      }
       if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current)
     }
   }, [])
@@ -297,7 +309,12 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
     setError(null)
 
     // Préférence MP4 (lisible partout, iPhone comprise), WebM en secours.
+    // Le 1er candidat (H264+AAC) n'existe que sur Safari/iPhone — Chrome ne
+    // sait pas encoder l'AAC et enregistre l'audio en Opus dans le MP4 :
+    // le son est conservé partout, mais sur les vieux iPhone il peut être
+    // silencieux (la vidéo, elle, se lit toujours).
     const mimeCandidates = [
+      'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
       'video/mp4;codecs=avc1.42E01E',
       'video/mp4',
       'video/webm;codecs=h264',
@@ -342,10 +359,49 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
     // Débit adaptatif : l'extrait reste léger quelle que soit la durée choisie.
     const bitrate = Math.min(2_000_000, Math.floor((8.5 * 1024 * 1024 * 8) / secs))
 
+    // ── Son : garder la musique/chanson de l'extrait ──
+    // Le canvas ne transporte que l'image ; la piste audio est ajoutée au
+    // flux via WebAudio (on entend l'extrait pendant la découpe — pratique
+    // pour choisir un passage musical). Si le navigateur refuse, on tente
+    // captureStream, sinon l'extrait est ajouté sans le son.
+    let stream: MediaStream
+    let hasAudio = false
+    try {
+      stream = canvas.captureStream(30)
+    } catch {
+      setError('Découpe impossible dans ce navigateur.')
+      return
+    }
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!audioGraphRef.current && AC) {
+        const actx = new AC()
+        const src = actx.createMediaElementSource(v)
+        const dest = actx.createMediaStreamDestination()
+        src.connect(dest)              // → l'export
+        src.connect(actx.destination)  // → les enceintes de l'admin
+        audioGraphRef.current = { actx, dest }
+      }
+      const graph = audioGraphRef.current
+      if (graph) {
+        if (graph.actx.state === 'suspended') { try { await graph.actx.resume() } catch { /* geste requis */ } }
+        const track = graph.dest.stream.getAudioTracks()[0]
+        if (track) { stream.addTrack(track); hasAudio = true }
+      }
+    } catch { /* pas de son via WebAudio */ }
+    if (!hasAudio) {
+      try {
+        const cs = typeof v.captureStream === 'function' ? v.captureStream() : null
+        const track = cs?.getAudioTracks?.()[0]
+        if (track) { stream.addTrack(track); hasAudio = true }
+      } catch { /* pas de son du tout */ }
+    }
+
     let rec: MediaRecorder
     try {
-      const stream = canvas.captureStream(30)
-      rec = new MediaRecorder(stream, { mimeType: supported, videoBitsPerSecond: bitrate })
+      const opts: MediaRecorderOptions = { mimeType: supported, videoBitsPerSecond: bitrate }
+      if (hasAudio) opts.audioBitsPerSecond = 128_000
+      rec = new MediaRecorder(stream, opts)
     } catch {
       setError('Découpe impossible dans ce navigateur.')
       return
@@ -384,7 +440,10 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
     }
 
     try {
-      v.muted = true
+      // Muet uniquement si l'audio est capté à part : la musique passe dans
+      // l'export sans sortir en double des haut-parleurs (le graphe WebAudio
+      // détourne la sortie de l'élément).
+      v.muted = !hasAudio
       v.playbackRate = 1
       await seekTo(v, start)
 
@@ -426,6 +485,7 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
       await stopped
       cleanupTimers()
       v.pause()
+      v.muted = true
       if (!aliveRef.current) return
 
       const blob = new Blob(chunks, { type: supported.split(';')[0] })
@@ -460,7 +520,7 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
             Découpeuse vidéo
           </DialogTitle>
           <DialogDescription className="text-xs text-[#6B6560]">
-            Ajoutez une vidéo au Hero Slider. Aucune limite de taille : la vidéo reste sur votre appareil, seul l&rsquo;extrait choisi est envoyé, déjà optimisé.
+            Ajoutez une vidéo au Hero Slider. Aucune limite de taille : la vidéo reste sur votre appareil, seul l&rsquo;extrait choisi est envoyé, déjà optimisé — avec son.
           </DialogDescription>
         </DialogHeader>
 
@@ -625,7 +685,7 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
                 </div>
                 <Progress value={Math.round(progress * 100)} />
                 <p className="text-[11px] text-[#9C9A92]">
-                  Gardez cet onglet ouvert et visible jusqu&rsquo;à la fin — l&rsquo;extrait est préparé en direct sur votre appareil.
+                  Gardez cet onglet ouvert et visible jusqu&rsquo;à la fin — l&rsquo;extrait (image et son) est préparé en direct sur votre appareil.
                 </p>
               </div>
             )}

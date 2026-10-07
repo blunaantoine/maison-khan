@@ -1763,16 +1763,24 @@ export default function Home() {
   }, [heroSlides, currentSlide, showAuthModal, showProductModal, showCheckoutModal, showProductFormModal, showSubCatModal])
 
   // Vidéos du hero : seule la slide active lit sa vidéo — les autres sont
-  // mises en pause (économie CPU/batterie, une vidéo reste audible = muted).
+  // mises en pause (économie CPU/batterie). L'état muet/son s'applique à
+  // toutes les vidéos ; si le navigateur refuse la lecture avec son (pas
+  // encore d'interaction visiteur), on retente en muet pour ne jamais
+  // bloquer le slider.
   useEffect(() => {
     heroSlides.forEach((slide, index) => {
       if (slide.type !== 'video') return
       const video = document.getElementById(`hero-video-${slide.id}`) as HTMLVideoElement | null
       if (!video) return
-      if (index === currentSlide) video.play().catch(() => {})
+      video.muted = videoMuted
+      if (index === currentSlide) {
+        video.play().catch(() => {
+          if (!video.muted) { video.muted = true; video.play().catch(() => {}) }
+        })
+      }
       else video.pause()
     })
-  }, [currentSlide, heroSlides])
+  }, [currentSlide, heroSlides, videoMuted])
 
   // Scroll handler
   useEffect(() => {
@@ -2612,6 +2620,26 @@ export default function Home() {
                   ))}
                 </div>
               </>
+            )}
+
+            {/* Son des vidéos du hero : les navigateurs imposent un clic du
+                visiteur avant de jouer le son (règle anti-pub intrusive).
+                Les vidéos démarrent donc muettes ; un clic active la musique
+                pour toute la visite. */}
+            {heroSlides[currentSlide]?.type === 'video' && (
+              <button
+                className="absolute bottom-8 right-6 w-11 h-11 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors z-10"
+                onClick={() => setVideoMuted(m => !m)}
+                aria-label={videoMuted ? 'Activer le son de la vidéo' : 'Couper le son de la vidéo'}
+                aria-pressed={!videoMuted}
+                title={videoMuted ? 'Activer le son' : 'Couper le son'}
+              >
+                {videoMuted ? (
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><line x1="23" y1="9" x2="17" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /><line x1="17" y1="9" x2="23" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /></svg>
+                ) : (
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15.54 8.46a5 5 0 010 7.07" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19.07 4.93a10 10 0 010 14.14" /></svg>
+                )}
+              </button>
             )}
 
             <div className="relative container mx-auto px-6 lg:px-12 pt-32 pb-20 z-10">
@@ -4071,6 +4099,9 @@ export default function Home() {
           </div>
           <div className="border-t border-[#6B6560]/20 pt-8">
             <p className="text-[#6B6560] text-xs">© {new Date().getFullYear()} MAISON KHAN. Tous droits réservés.</p>
+            <p className="mt-2 text-[10px] tracking-[0.3em] uppercase text-[#6B6560]/60">
+              Site conçu par <span className="text-[#9C7C5C]">VISIBE STUDIO</span>
+            </p>
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('mk:open-cookie-settings'))}
