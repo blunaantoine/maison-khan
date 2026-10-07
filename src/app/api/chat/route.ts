@@ -30,6 +30,30 @@ const MAX_HISTORY = 10
 const MAX_CONTENT = 2000
 const MAX_PRODUCTS = 40
 
+/** Garde-fou moteur IA : connexion (5 s) et génération (12 s) max. */
+const ZAI_CONNECT_TIMEOUT_MS = 5_000
+const ZAI_REQUEST_TIMEOUT_MS = 12_000
+
+/**
+ * Exécute une promesse avec un garde-fou de temps.
+ * Renvoie null si le délai est dépassé (le moteur IA « accroche » sans
+ * répondre sur certains réseaux — sans ce garde-fou, la requête du visiteur
+ * pendait jusqu'au timeout du reverse-proxy avant d'échouer).
+ */
+async function withTimeout<T>(promise: Promise<T | null>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 function sanitizeHistory(raw: unknown): ChatMessage[] {
   if (!Array.isArray(raw)) return []
   return raw
@@ -172,18 +196,28 @@ export async function POST(request: NextRequest) {
 
     // ── Appel LLM, avec repli local si le moteur n'est pas disponible ──
     // (ex. VPS sans .z-ai-config : l'assistant répond alors en mode dégradé
-    //  depuis les connaissances réelles de la boutique + le catalogue en base)
+    //  depuis les connaissances réelles de la boutique + le catalogue en base.
+    //  Garde-fou de temps : si le moteur « accroche » sans répondre, on
+    //  bascule immédiatement sur les réponses locales plutôt que de laisser
+    //  la requête pendre jusqu'au timeout du reverse-proxy.)
     let reply: string | null = null
     try {
-      const zai = await ZAI.create()
-      const completion = await zai.chat.completions.create({
-        messages: [
-          { role: 'assistant', content: systemPrompt },
-          ...history.map((m) => ({ role: m.role, content: m.content })),
-        ],
-        thinking: { type: 'disabled' },
-      })
-      reply = completion.choices[0]?.message?.content?.trim() || null
+      const zai = await withTimeout(ZAI.create().catch(() => null), ZAI_CONNECT_TIMEOUT_MS)
+      if (zai) {
+        const completion = await withTimeout(
+          zai.chat.completions
+            .create({
+              messages: [
+                { role: 'assistant', content: systemPrompt },
+                ...history.map((m) => ({ role: m.role, content: m.content })),
+              ],
+              thinking: { type: 'disabled' },
+            })
+            .catch(() => null),
+          ZAI_REQUEST_TIMEOUT_MS
+        )
+        reply = completion?.choices[0]?.message?.content?.trim() || null
+      }
     } catch {
       reply = null // moteur IA indisponible → mode dégradé local
     }
