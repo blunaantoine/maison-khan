@@ -82,16 +82,16 @@ else
   bad "APPLICATION — ne répond toujours pas"
   info "Logs à m'envoyer : pm2 logs maison-khan --lines 30 --nostream"
 fi
-CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://maison-khan.com 2>/dev/null)
+CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://shop.maison-khan.com 2>/dev/null)
 CODE=${CODE:-000}
 case "$CODE" in
   200|301|302|307|308)
-    ok "SITE WEB — https://maison-khan.com répond (HTTP $CODE)"
+    ok "SITE WEB — https://shop.maison-khan.com répond (HTTP $CODE)"
     echo ""
     echo "🎉 C'EST RÉPARÉ ! Rafraîchis ton navigateur (Ctrl+F5)"
     ;;
   *)
-    bad "SITE WEB — maison-khan.com : HTTP $CODE (ou pas de réponse)"
+    bad "SITE WEB — shop.maison-khan.com : HTTP $CODE (ou pas de réponse)"
     info "Envoie-moi une capture d'écran de tout cet écran"
     ;;
 esac
