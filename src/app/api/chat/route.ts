@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import ZAI from 'z-ai-web-dev-sdk'
-import { buildLocalReply } from './local-fallback'
+import { buildLocalReply, type CatalogProduct, type ChatTurn } from './local-fallback'
 
 /**
  * MAISON KHAN — Assistant virtuel (chatbot de la section Contact).
@@ -30,9 +30,20 @@ const MAX_HISTORY = 10
 const MAX_CONTENT = 2000
 const MAX_PRODUCTS = 40
 
-/** Garde-fou moteur IA : connexion (5 s) et génération (12 s) max. */
+/** Garde-fou moteur IA : connexion (5 s) et génération (12 s par défaut). */
 const ZAI_CONNECT_TIMEOUT_MS = 5_000
-const ZAI_REQUEST_TIMEOUT_MS = 12_000
+const ZAI_REQUEST_TIMEOUT_MS = Math.max(3_000, Number(process.env.CHAT_AI_TIMEOUT_MS) || 12_000)
+
+/**
+ * Mode du chatbot :
+ *  - "auto"  (défaut) : tente le moteur IA, bascule sur l'assistant local
+ *            (moteur conversationnel complet : catalogue, budget, contexte)
+ *            si le moteur ne répond pas dans le temps imparti.
+ *  - "local" : moteur IA ignoré — réponses locales instantanées.
+ *            Recommandé sur les serveurs où le moteur IA n'est pas joignable
+ *            (ex. VPS de production : CHAT_AI_MODE=local dans .env).
+ */
+const CHAT_AI_MODE = (process.env.CHAT_AI_MODE || 'auto').trim().toLowerCase() === 'local' ? 'local' : 'auto'
 
 /**
  * Exécute une promesse avec un garde-fou de temps.
@@ -80,8 +91,8 @@ function parseJsonArray(value: string | null | undefined): { size?: string; pric
   }
 }
 
-/** Construit la fiche du catalogue réel, injectée dans le prompt système. */
-async function buildCatalogContext(): Promise<string> {
+/** Construit le catalogue réel : texte pour le prompt LLM + structure pour l'assistant local. */
+async function buildCatalog(): Promise<{ text: string; products: CatalogProduct[] }> {
   try {
     const products = await db.product.findMany({
       where: { isActive: true },
@@ -89,8 +100,8 @@ async function buildCatalogContext(): Promise<string> {
       take: MAX_PRODUCTS,
     })
 
-    const lines = products.map((p) => {
-      const colorNames = p.colors.map((c) => c.colorName).filter(Boolean)
+    const mapped: CatalogProduct[] = products.map((p) => {
+      const colors = p.colors.map((c) => c.colorName).filter(Boolean)
       const sizeSet = new Set<string>()
       let minPrice = 0
       let totalStock = 0
@@ -102,20 +113,37 @@ async function buildCatalogContext(): Promise<string> {
         }
       }
       const sizes = Array.from(sizeSet).sort((a, b) => Number(a) - Number(b))
+      return {
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        subCategory: p.subCategory,
+        genre: p.genre,
+        colors,
+        sizes,
+        minPrice,
+        totalStock,
+      }
+    })
+
+    const lines = mapped.map((p) => {
       const parts = [
         `- ${p.name} (${p.type === 'accessoire' ? 'accessoire' : 'chaussure'}${p.subCategory ? `, ${p.subCategory}` : ''}${p.genre ? `, ${p.genre}` : ''})`,
-        colorNames.length ? `couleurs : ${colorNames.join(' / ')}` : null,
-        sizes.length ? `tailles : ${sizes.join(', ')}` : null,
-        minPrice > 0 ? `à partir de ${minPrice.toLocaleString('fr-FR')} XOF` : 'prix sur demande',
-        totalStock > 0 ? (totalStock <= 3 ? `stock très limité (${totalStock})` : 'en stock') : 'sur demande',
+        p.colors.length ? `couleurs : ${p.colors.join(' / ')}` : null,
+        p.sizes.length ? `tailles : ${p.sizes.join(', ')}` : null,
+        p.minPrice > 0 ? `à partir de ${p.minPrice.toLocaleString('fr-FR')} XOF` : 'prix sur demande',
+        p.totalStock > 0 ? (p.totalStock <= 3 ? `stock très limité (${p.totalStock})` : 'en stock') : 'sur demande',
       ].filter(Boolean)
       return parts.join(' — ')
     })
 
-    return lines.length ? lines.join('\n') : '(catalogue vide actuellement)'
+    return {
+      text: lines.length ? lines.join('\n') : '(catalogue vide actuellement)',
+      products: mapped,
+    }
   } catch (e) {
     console.error('[chat] Erreur construction catalogue :', e)
-    return '(catalogue indisponible)'
+    return { text: '(catalogue indisponible)', products: [] }
   }
 }
 
@@ -188,42 +216,46 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Contexte du site reconstruit à chaque requête ──
-    const [catalog, siteContent] = await Promise.all([
-      buildCatalogContext(),
+    const [{ text: catalog, products: catalogProducts }, siteContent] = await Promise.all([
+      buildCatalog(),
       buildSiteContentContext(),
     ])
     const systemPrompt = buildSystemPrompt(catalog, siteContent)
 
-    // ── Appel LLM, avec repli local si le moteur n'est pas disponible ──
-    // (ex. VPS sans .z-ai-config : l'assistant répond alors en mode dégradé
-    //  depuis les connaissances réelles de la boutique + le catalogue en base.
-    //  Garde-fou de temps : si le moteur « accroche » sans répondre, on
-    //  bascule immédiatement sur les réponses locales plutôt que de laisser
-    //  la requête pendre jusqu'au timeout du reverse-proxy.)
+    // ── Réponse : moteur IA (mode auto) puis assistant local en secours ──
+    // L'assistant local est un moteur conversationnel complet (recherche
+    // catalogue, budget, couleurs, tailles, mémoire de conversation) — il
+    // répond de façon autonome lorsque le moteur IA n'est pas joignable.
     let reply: string | null = null
-    try {
-      const zai = await withTimeout(ZAI.create().catch(() => null), ZAI_CONNECT_TIMEOUT_MS)
-      if (zai) {
-        const completion = await withTimeout(
-          zai.chat.completions
-            .create({
-              messages: [
-                { role: 'assistant', content: systemPrompt },
-                ...history.map((m) => ({ role: m.role, content: m.content })),
-              ],
-              thinking: { type: 'disabled' },
-            })
-            .catch(() => null),
-          ZAI_REQUEST_TIMEOUT_MS
-        )
-        reply = completion?.choices[0]?.message?.content?.trim() || null
+    if (CHAT_AI_MODE !== 'local') {
+      try {
+        const zai = await withTimeout(ZAI.create().catch(() => null), ZAI_CONNECT_TIMEOUT_MS)
+        if (zai) {
+          const completion = await withTimeout(
+            zai.chat.completions
+              .create({
+                messages: [
+                  { role: 'assistant', content: systemPrompt },
+                  ...history.map((m) => ({ role: m.role, content: m.content })),
+                ],
+                thinking: { type: 'disabled' },
+              })
+              .catch(() => null),
+            ZAI_REQUEST_TIMEOUT_MS
+          )
+          reply = completion?.choices[0]?.message?.content?.trim() || null
+        }
+      } catch {
+        reply = null // moteur IA indisponible → assistant local
       }
-    } catch {
-      reply = null // moteur IA indisponible → mode dégradé local
     }
     if (!reply) {
-      console.warn('[chat] Moteur IA indisponible — réponse locale (catalogue réel)')
-      reply = buildLocalReply(lastUser.content, catalog)
+      if (CHAT_AI_MODE === 'local') {
+        console.log('[chat] Mode local — réponse instantanée (moteur conversationnel)')
+      } else {
+        console.warn('[chat] Moteur IA indisponible — réponse locale (catalogue réel)')
+      }
+      reply = buildLocalReply(history as ChatTurn[], catalogProducts)
     }
 
     return NextResponse.json({ reply })
