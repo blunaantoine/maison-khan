@@ -5,15 +5,23 @@
  * cas sur le VPS de production, où le service ne répond pas. Plutôt qu'un
  * simple moteur de mots-clés, ce module embarque un vrai mini-assistant :
  *
- *   – Recherche dans le CATALOGUE RÉEL : par type (sandales, mules…), genre,
- *     couleur, taille précise, budget (« j'ai 60 000 FCFA »), nom de modèle.
- *   – Mémoire de conversation : « et pour homme ? », « c'est combien ? »,
- *     « la première ? », « elle est disponible ? » sont compris en contexte.
+ *   – Recherche dans le CATALOGUE RÉEL : par type (sandales, mules, sacs…),
+ *     genre, couleur, taille précise, budget (« j'ai 60 000 FCFA »), nom de
+ *     modèle. Le type est lu en priorité dans `category` (ex. production :
+ *     « sandales », « mules », « sac »), puis dans `subCategory` (ex. sandbox :
+ *     « bottines », « mocassins ») et enfin dans le nom du produit — les deux
+ *     conventions de données sont donc comprises. Les `subCategory` qui sont
+ *     des noms de collections (« Collection Koriace ») ne polluent plus la
+ *     recherche et s'affichent comme collections.
+ *   – Honnêteté : si le type demandé n'existe pas (« mocassins »), l'assistant
+ *     le dit et propose ce que la boutique a réellement (ex. « sandales, mules
+ *     et sacs ») au lieu d'afficher tout le catalogue.
+ *   – Mémoire de conversation : « et pour homme ? » (hérite du type de la
+ *     recherche précédente), « c'est combien ? » (retrouve les modèles cités
+ *     dans la dernière réponse, ou relance la recherche à partir de celle-ci),
+ *     « la première ? », « vous l'avez en 39 ? » (affine la sélection).
  *   – Formulations variées (pas deux salutations identiques), ton luxe, concis.
  *   – Zéro invention : chaque prix / couleur / taille / stock vient de la base.
- *
- * Mêmes règles que le prompt LLM : français, élégant, concis ; si l'info
- * manque → on le dit et on propose WhatsApp.
  */
 
 export interface ChatTurn {
@@ -25,7 +33,8 @@ export interface CatalogProduct {
   id: string
   name: string
   type: string // 'chaussure' | 'accessoire'
-  subCategory: string | null
+  category: string // type réel : 'sandales', 'mules', 'sac'…
+  subCategory: string | null // collection ou sous-catégorie du menu
   genre: string | null
   colors: string[]
   sizes: string[]
@@ -58,6 +67,11 @@ function singular(t: string): string {
   return t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t
 }
 
+/** Pluriel approximatif (français) : « sandale » → « sandales ». */
+function plural(t: string): string {
+  return /(s|x)$/.test(t) ? t : `${t}s`
+}
+
 function fmtPrice(n: number): string {
   return n.toLocaleString('fr-FR').replace(/[\u202f\u00a0]/g, ' ')
 }
@@ -79,45 +93,11 @@ function stockLabel(total: number): string {
   return 'en stock'
 }
 
-function typeLabel(p: CatalogProduct): string {
-  const sub = p.subCategory ? ` ${singular(norm(p.subCategory))}` : ''
-  const genre = p.genre ? ` ${norm(p.genre)}` : ''
-  return `${p.type === 'accessoire' ? 'accessoire' : 'chaussure'}${sub}${genre}`
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** Fiche produit courte pour une bulle de chat. */
-function productLine(p: CatalogProduct, withStock = true): string {
-  const parts = [
-    `- ${p.name} (${typeLabel(p)})`,
-    p.colors.length ? `couleurs : ${p.colors.join(' / ')}` : null,
-    p.sizes.length ? `tailles : ${p.sizes.join(', ')}` : null,
-    p.minPrice > 0 ? `${fmtPrice(p.minPrice)} XOF` : 'prix sur demande',
-    withStock ? stockLabel(p.totalStock) : null,
-  ]
-  return parts.filter(Boolean).join(' — ')
-}
-
-/** Liste plafonnée à 4 lignes + mention du reste. */
-function productList(list: CatalogProduct[], withStock = true): string {
-  const shown = list.slice(0, 4).map((p) => productLine(p, withStock)).join('\n')
-  const rest = list.length - 4
-  return rest > 0 ? `${shown}\n… et ${rest} autre${rest > 1 ? 's' : ''} modèle${rest > 1 ? 's' : ''} dans la boutique` : shown
-}
-
-// ─────────────────────────── extraction d'entités ───────────────────────────
-
-interface Entities {
-  products: CatalogProduct[] // modèles cités par leur nom
-  type: string | null // chaussure | accessoire
-  subCategory: string | null // sandale, mule, bottine, sac…
-  genre: string | null // femme | homme
-  color: string | null // clé de famille (beige, dore, noir…)
-  colorGroup: string[] | null // teintes du catalogue acceptées
-  size: string | null // « 39 », « 40 »…
-  budget: number | null // XOF
-  ordinal: number | null // « la première » → 0
-  cheapest: boolean
-}
+// ───────────────────────────── vocabulaires ─────────────────────────────
 
 /** Familles de couleurs : mot du visiteur → groupe de teintes proches du catalogue. */
 const COLOR_SYNONYMS: Record<string, string[]> = {
@@ -142,13 +122,124 @@ const COLOR_SYNONYMS: Record<string, string[]> = {
   vert: ['vert', 'emeraude', 'kaki'],
   violet: ['violet', 'mauve', 'lilas'],
   jaune: ['jaune', 'moutarde'],
+  prune: ['prune', 'violet'],
+  orange: ['orange'],
 }
 
-/** Mots-clés de types / sous-catégories : mot du visiteur → prédicat. */
+/** Mots-clés de types : mot du visiteur → type canonique. */
 const SUBCATEGORY_WORDS: Record<string, string> = {
-  sandale: 'sandale', mule: 'mule', ballerine: 'ballerine', escarpin: 'escarpin',
-  bottine: 'bottine', bottes: 'botte', botte: 'botte', mocassin: 'mocassin',
-  sac: 'sac', bandouliere: 'sac',
+  sandale: 'sandale', tong: 'sandale', claquette: 'sandale',
+  mule: 'mule', pantoufle: 'mule',
+  ballerine: 'ballerine',
+  escarpin: 'escarpin', talon: 'escarpin', aiguille: 'escarpin',
+  bottine: 'bottine', botte: 'botte', cuissarde: 'botte',
+  mocassin: 'mocassin', loafer: 'mocassin',
+  sac: 'sac', bandouliere: 'sac', pochette: 'sac', cabas: 'sac',
+  basket: 'basket', sneaker: 'basket', tennis: 'basket',
+  derby: 'derby', richelieu: 'derby',
+}
+
+/** Mots trop génériques pour identifier un type de création. */
+const GENERIC_TYPE_WORDS = new Set(['chaussure', 'accessoire', 'et', 'de', 'collection', 'collections'])
+
+/** Mots signalant une question « service » (paiement, livraison…) : la recherche catalogue passe la main. */
+const FAQ_HINTS = [
+  'paiement', 'payer', 'payement', 'paie', 'paydunya', 'mobile money',
+  'livraison', 'livrer', 'livrez', 'livre', 'expedi', 'douane', 'colis', 'delai', 'shipping',
+  'suivi', 'statut',
+  'retour', 'echange', 'rembourse', 'reclamation',
+  'commander', 'passer commande', 'faire une commande',
+  'whatsapp', 'telephone', 'appeler', 'joindre', 'email', 'mail', 'numero',
+  'horaire', 'ouvert', 'ferme',
+  'instagram', 'tiktok',
+  'entretien', 'entretenir', 'nettoyer', 'nettoyage', 'cirage', 'cirer', 'proteger', 'impermeabiliser',
+  'matiere', 'materiau',
+  'sur mesure', 'personnali',
+  'retirer', 'boutique', 'magasin', 'adresse', 'venir',
+]
+
+// ───────────────────────────── libellés produit ─────────────────────────────
+
+/**
+ * Mots décrivant le type réel d'un produit, lus dans `category` (production :
+ * « sandales ») ou, si trop générique, dans `subCategory` (sandbox :
+ * « bottines ») — seuls les vrais mots de type sont retenus, jamais les
+ * noms de collections (« Collection Koriace »).
+ */
+function typeWords(p: CatalogProduct): string[] {
+  const cat = tokens(p.category || '')
+    .map(singular)
+    .filter((t) => !GENERIC_TYPE_WORDS.has(t) && t.length > 2)
+  if (cat.length > 0) return cat
+  const sub = tokens(p.subCategory || '')
+    .map(singular)
+    .filter((t) => SUBCATEGORY_WORDS[t] && !GENERIC_TYPE_WORDS.has(t))
+  if (sub.length > 0) return sub
+  return [p.type === 'accessoire' ? 'accessoire' : 'chaussure']
+}
+
+/** Libellé court du type, ex. « sandale femme », « mule homme », « sac femme ». */
+export function productTypeLabel(p: CatalogProduct): string {
+  const base = typeWords(p).join(' ')
+  const genre = p.genre ? ` ${norm(p.genre)}` : ''
+  return `${base}${genre}`
+}
+
+/** Nom de collection à afficher (masqué s'il répète le type, ex. subCategory « bottines »). */
+export function collectionLabel(p: CatalogProduct): string {
+  const subNorm = norm(p.subCategory || '')
+  return subNorm && !typeWords(p).some((w) => subNorm.includes(w)) ? p.subCategory!.trim() : ''
+}
+
+/** Fiche produit courte pour une bulle de chat. */
+function productLine(p: CatalogProduct, withStock = true): string {
+  const collection = collectionLabel(p) ? ` · ${collectionLabel(p)}` : ''
+  const parts = [
+    `- ${p.name.trim()} (${productTypeLabel(p)}${collection})`,
+    p.colors.length ? `couleurs : ${p.colors.join(' / ')}` : null,
+    p.sizes.length ? `tailles : ${p.sizes.join(', ')}` : null,
+    p.minPrice > 0 ? `${fmtPrice(p.minPrice)} XOF` : 'prix sur demande',
+    withStock ? stockLabel(p.totalStock) : null,
+  ]
+  return parts.filter(Boolean).join(' — ')
+}
+
+/** Liste plafonnée à 4 lignes + mention du reste. */
+function productList(list: CatalogProduct[], withStock = true): string {
+  const shown = list.slice(0, 4).map((p) => productLine(p, withStock)).join('\n')
+  const rest = list.length - 4
+  return rest > 0
+    ? `${shown}\n… et ${rest} autre${rest > 1 ? 's' : ''} modèle${rest > 1 ? 's' : ''} dans la boutique`
+    : shown
+}
+
+/** Énumération des types présents au catalogue : « sandales, mules et sacs ». */
+function availableTypes(catalog: CatalogProduct[]): string {
+  const seen: string[] = []
+  for (const p of catalog) {
+    for (const w of typeWords(p)) {
+      const pl = plural(w)
+      if (!seen.includes(pl)) seen.push(pl)
+    }
+  }
+  if (seen.length === 0) return 'nos créations artisanales'
+  if (seen.length === 1) return seen[0]
+  return `${seen.slice(0, -1).join(', ')} et ${seen[seen.length - 1]}`
+}
+
+// ─────────────────────────── extraction d'entités ───────────────────────────
+
+interface Entities {
+  products: CatalogProduct[] // modèles cités par leur nom
+  type: string | null // chaussure | accessoire
+  subCategory: string | null // sandale, mule, sac…
+  genre: string | null // femme | homme
+  color: string | null // clé de famille (beige, dore, noir…)
+  colorGroup: string[] | null // teintes du catalogue acceptées
+  size: string | null // « 39 », « 40 »…
+  budget: number | null // XOF
+  ordinal: number | null // « la première » → 0
+  cheapest: boolean
 }
 
 function extractEntities(q: string, catalog: CatalogProduct[]): Entities {
@@ -161,7 +252,7 @@ function extractEntities(q: string, catalog: CatalogProduct[]): Entities {
   // ── modèles cités par nom (le nom, ou un mot distinctif ≥ 4 lettres, apparaît) ──
   for (const p of catalog) {
     const pName = norm(p.name)
-    if (q.includes(pName)) { e.products.push(p); continue }
+    if (pName && q.includes(pName)) { e.products.push(p); continue }
     const nameToks = tokens(p.name).filter((t) => t.length >= 4 && !SUBCATEGORY_WORDS[t])
     if (nameToks.length > 0 && nameToks.some((t) => toks.includes(t))) e.products.push(p)
   }
@@ -171,13 +262,14 @@ function extractEntities(q: string, catalog: CatalogProduct[]): Entities {
     if (s === 'femme' || s === 'fille' || s === 'dame' || s === 'feminin' || s === 'madame') e.genre = 'femme'
     if (s === 'homme' || s === 'garcon' || s === 'masculin' || s === 'monsieur') e.genre = 'homme'
     if (e.genre === null && (s === 'mixte' || s === 'unisexe')) e.genre = 'mixte'
-    if (COLOR_SYNONYMS[t] && !e.color) {
-      e.color = t
-      e.colorGroup = COLOR_SYNONYMS[t]
+    const colorKey = COLOR_SYNONYMS[t] ? t : COLOR_SYNONYMS[s] ? s : null
+    if (colorKey && !e.color) {
+      e.color = colorKey
+      e.colorGroup = COLOR_SYNONYMS[colorKey]
     }
     if (SUBCATEGORY_WORDS[s]) e.subCategory = SUBCATEGORY_WORDS[s]
-    if (s === 'chaussure' || s === 'chaussures' || s === 'soulier') e.type = 'chaussure'
-    if (s === 'accessoire' || s === 'accessoires' || s === 'bijou') e.type = 'accessoire'
+    if (s === 'chaussure' || s === 'soulier') e.type = 'chaussure'
+    if (s === 'accessoire' || s === 'bijou') e.type = 'accessoire'
     if (s === 'sac') { e.type = 'accessoire'; e.subCategory = 'sac' }
     if (t === 'premier' || t === 'premiere' || t === '1ere' || t === '1er') e.ordinal = 0
     if (t === 'deuxieme' || t === '2eme') e.ordinal = 1
@@ -185,12 +277,12 @@ function extractEntities(q: string, catalog: CatalogProduct[]): Entities {
     if (t === 'dernier' || t === 'derniere') e.ordinal = -1
   }
 
-  // ── taille explicite : « taille 39 », « pointure 40 », ou nombre isolé 35–46 ──
+  // ── taille explicite : « taille 39 », « pointure 40 », « en 39 ? », ou nombre isolé 35–46 ──
   const explicit = q.match(/(?:taille|pointure)\s*(\d{2})\b/)
   if (explicit) e.size = explicit[1]
   else {
     const n = toks.find((t) => /^(3[5-9]|4[0-6])$/.test(t))
-    if (n && has(q, 'taille', 'pointure', 'chaussure', 'sandale', 'mule', 'escarpin', 'bottine', 'ballerine', 'mocassin', 'porter', 'met', 'fais')) e.size = n
+    if (n && (has(q, 'taille', 'pointure', 'chaussure', 'sandale', 'mule', 'escarpin', 'bottine', 'ballerine', 'mocassin', 'porter', 'met', 'fais', 'en ' + n) || q.trim().length <= 25)) e.size = n
   }
 
   // ── budget : nécessite un contexte montant (devise ou mot de budget) ──
@@ -209,37 +301,48 @@ function extractEntities(q: string, catalog: CatalogProduct[]): Entities {
 
 // ─────────────────────────── recherche catalogue ───────────────────────────
 
+function colorMatches(p: CatalogProduct, e: Entities): boolean {
+  if (!e.color) return true
+  const group = (e.colorGroup || [e.color]).map(singular)
+  return p.colors.some((c) => tokens(c).map(singular).some((ct) => group.includes(ct)))
+}
+
 function matchesType(p: CatalogProduct, e: Entities): boolean {
   if (e.subCategory) {
-    const sub = singular(norm(p.subCategory || ''))
-    const nameToks = tokens(p.name).map(singular)
-    return sub === singular(e.subCategory) || nameToks.includes(singular(e.subCategory))
+    const key = singular(e.subCategory)
+    if (typeWords(p).includes(key)) return true
+    if (tokens(p.subCategory || '').map(singular).includes(key)) return true
+    if (tokens(p.name).map(singular).includes(key)) return true
+    return false
   }
   if (e.type) return norm(p.type).includes(e.type)
   return true
 }
 
+/** En stock d'abord, puis par prix croissant (prix sur demande en fin). */
+function sortByAvailability(list: CatalogProduct[]): CatalogProduct[] {
+  return [...list].sort((a, b) => {
+    const sa = a.totalStock > 0 ? 0 : 1
+    const sb = b.totalStock > 0 ? 0 : 1
+    if (sa !== sb) return sa - sb
+    const pa = a.minPrice > 0 ? a.minPrice : Number.MAX_SAFE_INTEGER
+    const pb = b.minPrice > 0 ? b.minPrice : Number.MAX_SAFE_INTEGER
+    return pa - pb
+  })
+}
+
 function searchProducts(e: Entities, catalog: CatalogProduct[]): CatalogProduct[] {
   let list = catalog.filter((p) => matchesType(p, e))
-  if (e.genre) list = list.filter((p) => norm(p.genre || '').includes(e.genre))
-  if (e.color) {
-    const group = (e.colorGroup || [e.color]).map(singular)
-    list = list.filter((p) =>
-      p.colors.some((c) => {
-        const ctoks = tokens(c).map(singular)
-        return ctoks.some((ct) => group.includes(ct))
-      })
-    )
-  }
-  if (e.size) list = list.filter((p) => p.sizes.includes(e.size))
+  if (e.genre) list = list.filter((p) => norm(p.genre || '').includes(e.genre!))
+  if (e.color) list = list.filter((p) => colorMatches(p, e))
+  if (e.size) list = list.filter((p) => p.sizes.includes(e.size!))
   if (e.budget !== null) {
     const ok = list.filter((p) => p.minPrice > 0 && p.minPrice <= e.budget!)
-    if (ok.length > 0) list = ok.sort((a, b) => a.minPrice - b.minPrice)
-    else if (e.budget >= 30_000) {
-      // budget un peu court : montrer les plus abordables plutôt que rien
-      const sorted = [...catalog].filter((p) => p.minPrice > 0).sort((a, b) => a.minPrice - b.minPrice)
-      return sorted.slice(0, 2)
-    }
+    if (ok.length > 0) return ok.sort((a, b) => a.minPrice - b.minPrice)
+    // budget sous tous les prix → les plus accessibles (la réponse précisera l'écart)
+    const pool = list.filter((p) => p.minPrice > 0)
+    const src = pool.length > 0 ? pool : catalog.filter((p) => p.minPrice > 0)
+    return [...src].sort((a, b) => a.minPrice - b.minPrice).slice(0, 3)
   }
   if (e.cheapest) {
     const withPrice = list.filter((p) => p.minPrice > 0)
@@ -248,14 +351,35 @@ function searchProducts(e: Entities, catalog: CatalogProduct[]): CatalogProduct[
       return withPrice.filter((p) => p.minPrice === min)
     }
   }
-  return list
+  return sortByAvailability(list)
 }
 
-/** Produits mentionnés dans la dernière réponse de l'assistant (mémoire). */
+/**
+ * Produits mentionnés dans la dernière réponse de l'assistant (mémoire).
+ * Occurrences en ordre de lecture ; si plusieurs produits portent le même nom
+ * (ex. deux « Signature », homme et femme), le libellé adjacent « (mule femme) »
+ * permet de choisir le bon.
+ */
 function productsFromLastReply(text: string, catalog: CatalogProduct[]): CatalogProduct[] {
   if (!text) return []
   const nt = norm(text)
-  return catalog.filter((p) => nt.includes(norm(p.name)))
+  const occurrences: { p: CatalogProduct; at: number }[] = []
+  for (const p of catalog) {
+    const n = norm(p.name)
+    if (!n) continue
+    const re = new RegExp(`\\b${escapeRegExp(n)}\\b`, 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(nt)) !== null) {
+      const after = nt.slice(m.index + n.length, m.index + n.length + 45)
+      const genre = p.genre ? norm(p.genre) : ''
+      const said = after.match(/\([^)]*\b(femme|homme|mixte)\b/)?.[1]
+      if (!genre || !said || said === genre) occurrences.push({ p, at: m.index })
+    }
+  }
+  occurrences.sort((a, b) => a.at - b.at)
+  const out: CatalogProduct[] = []
+  for (const o of occurrences) if (!out.includes(o.p)) out.push(o.p)
+  return out
 }
 
 // ─────────────────────────── réponse par intention ───────────────────────────
@@ -265,10 +389,10 @@ function productFocus(p: CatalogProduct, q: string): string {
   const stockAsked = has(q, 'disponible', 'dispo', 'stock', 'reste')
   const sizeAsked = has(q, 'taille', 'pointure')
   const head = priceAsked
-    ? `${p.name} est à ${fmtPrice(p.minPrice)} XOF`
+    ? `${p.name.trim()} est à ${fmtPrice(p.minPrice)} XOF`
     : stockAsked
-      ? `${p.name} — ${stockLabel(p.totalStock)}`
-      : `Voici ${p.name}`
+      ? `${p.name.trim()} — ${stockLabel(p.totalStock)}`
+      : `Voici ${p.name.trim()}`
   const details: string[] = []
   if (!priceAsked && p.minPrice > 0) details.push(`${fmtPrice(p.minPrice)} XOF`)
   if (p.colors.length) details.push(`couleurs : ${p.colors.join(' / ')}`)
@@ -277,23 +401,87 @@ function productFocus(p: CatalogProduct, q: string): string {
   return `${head}${tail}. La fiche produit affiche les disponibilités en temps réel — et pour un conseil personnalisé, nos artisans sont sur WhatsApp (${WHATSAPP}).`
 }
 
+/** Introduction d'une liste de résultats : « Nos sandales pour femme : ». */
+function searchIntro(e: Entities, seed: string): string {
+  const bits: string[] = []
+  if (e.budget !== null) bits.push(`à ${fmtPrice(e.budget)} XOF ou moins`)
+  if (e.subCategory) {
+    bits.push(`nos ${plural(singular(e.subCategory))}`)
+    if (e.genre) bits.push(`pour ${e.genre}`)
+  } else if (e.genre) {
+    bits.push(`nos créations pour ${e.genre}`)
+  }
+  if (e.color) bits.push(e.subCategory || e.genre ? `en ${e.color}` : `nos créations en ${e.color}`)
+  if (e.size) bits.push(`en taille ${e.size}`)
+  if (bits.length === 0) {
+    return pick(['Voici ce qui correspond à votre recherche ✨', 'Nos modèles correspondants :', 'Avec plaisir, voici :'], seed)
+  }
+  const phrase = bits.join(' ')
+  const cap = phrase.charAt(0).toUpperCase() + phrase.slice(1)
+  return pick([`${cap} :`, `${cap} ✨`], seed)
+}
+
+/** Rien trouvé : réponse honnête + alternatives réelles du catalogue. */
+function emptySearchReply(e: Entities, seed: string, catalog: CatalogProduct[]): string {
+  const inStock = catalog.filter((p) => p.totalStock > 0)
+  const suggestions = inStock.length > 0 ? inStock : catalog
+  const cleanEntities = (over: Partial<Entities>): Entities => ({
+    products: [], type: null, subCategory: null, genre: null, color: null, colorGroup: null,
+    size: null, budget: null, ordinal: null, cheapest: false, ...over,
+  })
+
+  if (e.subCategory) {
+    const sub = plural(singular(e.subCategory))
+    // le type existe-t-il au moins au catalogue ?
+    const typeExists = catalog.some((p) => typeWords(p).includes(singular(e.subCategory!)))
+    if (typeExists && e.genre) {
+      const others = searchProducts(cleanEntities({ subCategory: e.subCategory }), catalog)
+      if (others.length > 0) {
+        return `${pick([
+          `Je n'ai pas de ${sub} pour ${e.genre} en ce moment 😔 En revanche, voici nos ${sub} disponibles :`,
+          `Pas de ${sub} pour ${e.genre} actuellement 😔 Nos ${sub} en boutique :`,
+        ], seed)}\n${productList(others)}\nJe peux aussi vous montrer d'autres créations pour ${e.genre} — dites-le-moi.`
+      }
+    }
+    const altGenre = e.genre
+      ? searchProducts(cleanEntities({ genre: e.genre }), catalog)
+      : []
+    const shown = altGenre.length > 0 ? altGenre : suggestions
+    return `${pick([
+      `Je n'ai pas de ${sub} en boutique en ce moment 😔 Nos créations du moment : ${availableTypes(catalog)}.`,
+      `Pas de ${sub} pour l'instant 😔 Nous proposons ${availableTypes(catalog)}.`,
+    ], seed)} ${e.genre ? `Voici quelques créations pour ${e.genre} :` : 'En voici quelques-unes :'}\n${productList(shown.slice(0, 3))}\nOu décrivez-moi vos envies (couleur, taille, budget) — et pour une recherche sur mesure, WhatsApp ${WHATSAPP}.`
+  }
+  if (e.size) {
+    return `Je n'ai rien en taille ${e.size} qui corresponde 😔 Voici nos créations disponibles :\n${productList(suggestions.slice(0, 3))}\nSouhaitez-vous un autre type de création ?`
+  }
+  if (e.color) {
+    return `Je n'ai rien aux teintes ${e.color} pour le moment 😔 Voici nos créations disponibles :\n${productList(suggestions.slice(0, 3))}\nD'autres teintes vous tentent ? Dites-moi.`
+  }
+  if (e.genre) {
+    return `Je n'ai pas de créations pour ${e.genre} correspondantes en ce moment 😔 Voici quelques-unes de nos créations :\n${productList(suggestions.slice(0, 3))}\nDécrivez-moi vos envies (type, couleur, budget) et je cherche.`
+  }
+  return `Je n'ai rien trouvé de tout à fait correspondant 😔 Voici quelques-unes de nos créations :\n${productList(suggestions.slice(0, 2))}\nDites-moi vos envies (type, couleur, budget) — ou écrivez-nous sur WhatsApp (${WHATSAPP}) pour une recherche sur mesure.`
+}
+
 function searchReply(e: Entities, results: CatalogProduct[], seed: string, catalog: CatalogProduct[]): string {
   if (results.length === 1) return productFocus(results[0], 'detail')
   if (results.length > 1) {
-    const intro = e.budget !== null
-      ? pick([`Dans votre budget (≤ ${fmtPrice(e.budget)} XOF) :`, `À ${fmtPrice(e.budget)} XOF ou moins :`], seed)
-      : e.color
-        ? pick([`Nos créations aux teintes ${e.color} :`, `Voici ce que nous avons en ${e.color} :`], seed)
-        : e.genre
-          ? pick([`Voici nos créations ${e.genre === 'homme' ? 'pour homme' : e.genre === 'femme' ? 'pour femme' : 'mixtes'} :`, `Pour ${e.genre} :`], seed)
-          : e.size
-            ? `En taille ${e.size}, il nous reste :`
-            : pick(['Voici ce qui correspond à votre recherche ✨', 'Nos modèles correspondants :', 'Avec plaisir, voici :'], seed)
-    return `${intro}\n${productList(results)}\nSouhaitez-vous une précision sur l'un d'eux ? (couleur, taille, prix)`
+    // budget sous tous les prix affichés → honnêteté
+    if (e.budget !== null && results.every((p) => p.minPrice > e.budget!)) {
+      return `${pick([
+        `Votre budget est un peu juste 😔 Nos créations les plus accessibles :`,
+        `À ${fmtPrice(e.budget)} XOF, c'est compliqué 😔 Voici nos modèles les plus abordables :`,
+      ], seed)}\n${productList(results)}\nPour une création sur mesure dans votre budget, nos artisans vous répondent sur WhatsApp (${WHATSAPP}).`
+    }
+    const closer = pick([
+      'Souhaitez-vous une précision (couleur, taille, prix) ?',
+      'Une question sur l\'un de ces modèles ?',
+      'Dites-moi si vous souhaitez affiner (couleur, taille, budget).',
+    ], seed)
+    return `${searchIntro(e, seed)}\n${productList(results)}\n${closer}`
   }
-  // rien trouvé → suggestions du catalogue
-  const examples = catalog.slice(0, 2).map((p) => productLine(p, false)).join('\n')
-  return `Je n'ai rien trouvé de tout à fait correspondant 😔 Voici quelques-unes de nos créations :\n${examples}\nDites-moi vos envies (type, couleur, budget) — ou écrivez-nous sur WhatsApp (${WHATSAPP}) pour une recherche sur mesure.`
+  return emptySearchReply(e, seed, catalog)
 }
 
 // ────────────────────────────── intentions ──────────────────────────────
@@ -306,10 +494,16 @@ export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]):
 
   const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? ''
   const lastProducts = productsFromLastReply(lastAssistant, catalog)
+  const lastE = lastAssistant ? extractEntities(` ${norm(lastAssistant)} `, catalog) : null
 
   if (!userMsg.trim()) return genericReply(catalog, seed)
 
   const e = extractEntities(q, catalog)
+  const bareFollowUp =
+    e.subCategory === null && e.type === null && e.color === null &&
+    e.size === null && e.budget === null && e.genre === null
+  // question de service (paiement, livraison…) ? — prioritaire sur la recherche catalogue
+  const faqHint = FAQ_HINTS.some((k) => q.includes(k))
 
   // ── remerciements / politesses courtes ──
   if (q.length < 70 && has(q, 'merci') && !has(q, '?', 'combien', 'prix')) {
@@ -334,36 +528,90 @@ export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]):
     return `Voici les détails :\n${productList(e.products)}\nUne question sur l'un de ces modèles (taille, couleur, disponibilité) ?`
   }
 
-  // ── suivi conversationnel : « et pour homme ? », « c'est combien ? », « la première ? » ──
-  const followUpOnly = has(q, 'et ', 'et le', 'et la', 'eux aussi', 'la meme') || q.length < 45
+  // ── suivi conversationnel ──
+  // « la première ? » / « le dernier ? » sur la liste précédente
   if (e.ordinal !== null && lastProducts.length > 0) {
     const idx = e.ordinal === -1 ? lastProducts.length - 1 : e.ordinal
     const p = lastProducts[Math.min(idx, lastProducts.length - 1)]
     if (p) return productFocus(p, q)
   }
-  const priceFollowUp = has(q, 'combien', 'prix', 'coute') && q.length < 60 && lastProducts.length > 0
-  if (priceFollowUp && e.genre === null && e.color === null && e.size === null && e.subCategory === null && e.type === null) {
-    return `Bien sûr :\n${productList(lastProducts)}\nChaque fiche produit détaille les couleurs et disponibilités en temps réel.`
+
+  // « c'est combien ? » — prix des modèles de la réponse précédente,
+  // ou relance de la recherche décrite dans cette réponse (type, genre, couleur)
+  const priceFollowUp = has(q, 'combien', 'prix', 'coute', 'tarif') && q.length < 60 && bareFollowUp
+  if (priceFollowUp) {
+    if (lastProducts.length === 1) return productFocus(lastProducts[0], q)
+    if (lastProducts.length > 1) {
+      return `${pick(['Bien sûr, les voici avec leurs prix :', 'Avec plaisir :'], seed)}\n${productList(lastProducts)}\nChaque fiche produit affiche les disponibilités en temps réel.`
+    }
+    if (lastE && (lastE.subCategory !== null || lastE.genre !== null || lastE.color !== null)) {
+      const found = searchProducts(lastE, catalog)
+      if (found.length > 0) {
+        return `Les voici avec leurs prix :\n${productList(found)}\nUne précision sur l'un de ces modèles ?`
+      }
+      return emptySearchReply(lastE, seed, catalog)
+    }
+    return `De quel modèle souhaitez-vous le prix ? Voici nos créations actuelles :\n${productList(sortByAvailability(catalog))}\nDites-moi celle qui vous intéresse ✨`
   }
-  const stockFollowUp = has(q, 'disponible', 'dispo', 'stock', 'reste t il', 'reste-t-il') && q.length < 60 && lastProducts.length > 0
-  if (stockFollowUp && e.genre === null && e.color === null && e.size === null && e.subCategory === null && e.type === null) {
-    return `Voici l'état des stocks :\n${productList(lastProducts)}\nLes pièces très limitées partent vite — pour réserver la vôtre : WhatsApp ${WHATSAPP}.`
+
+  // « elle est disponible ? » / « il en reste ? »
+  const stockFollowUp = has(q, 'disponible', 'dispo', 'stock', 'reste t il', 'reste-t-il', 'il en reste') && q.length < 60 && bareFollowUp
+  if (stockFollowUp) {
+    if (lastProducts.length > 0) {
+      return `Voici l'état des stocks :\n${productList(lastProducts)}\nLes pièces très limitées partent vite — pour réserver la vôtre : WhatsApp ${WHATSAPP}.`
+    }
+    if (lastE && (lastE.subCategory !== null || lastE.genre !== null || lastE.color !== null)) {
+      const found = searchProducts(lastE, catalog)
+      if (found.length > 0) {
+        return `Voici les disponibilités :\n${productList(found)}\nLes pièces très limitées partent vite — pour réserver la vôtre : WhatsApp ${WHATSAPP}.`
+      }
+      return emptySearchReply(lastE, seed, catalog)
+    }
+    return `Quel modèle vous intéresse ? Voici nos créations avec leurs stocks :\n${productList(sortByAvailability(catalog))}\nDites-moi celle que vous souhaitez.`
   }
-  if (followUpOnly && e.genre !== null && e.color === null && e.size === null) {
-    const inLast = lastProducts.filter((p) => norm(p.genre || '').includes(e.genre!))
-    const base = inLast.length > 0 ? inLast : catalog
-    const results = base.filter((p) => norm(p.genre || '').includes(e.genre!) && matchesType(p, e))
-    if (results.length > 0) {
-      return `${e.genre === 'homme' ? 'Pour homme' : 'Pour femme'}, voici nos créations :\n${productList(results)}\nSouhaitez-vous une précision (couleur, taille, prix) ?`
+
+  // « vous l'avez en 39 ? » / « et en rouge ? » — affine la sélection précédente
+  if ((e.size !== null || e.color !== null) && lastProducts.length > 0 && q.length < 60 && e.subCategory === null) {
+    const label = [e.size ? `en taille ${e.size}` : null, e.color ? `en ${e.color}` : null].filter(Boolean).join(' et ')
+    const narrowed = lastProducts.filter((p) => (e.size === null || p.sizes.includes(e.size)) && colorMatches(p, e))
+    if (narrowed.length > 0) {
+      return `Oui, dans votre sélection ${label} :\n${productList(narrowed)}\nSouhaitez-vous les détails d'un modèle (prix, couleurs) ?`
+    }
+    const wider = searchProducts(e, catalog)
+    if (wider.length > 0) {
+      return `Pas ${label} dans la sélection précédente 😔 Voici ce que nous avons ${label} dans la boutique :\n${productList(wider)}\nDites-moi si l'une de ces pièces vous tente.`
     }
   }
 
-  // ── recherche catalogue (entités détectées) ──
-  if (e.products.length > 3 || e.subCategory || e.color || e.size || (e.budget !== null) || (e.genre !== null && has(q, 'homme', 'femme', 'mixte', 'homme)', 'fille', 'garcon', 'dame', 'madame')) || e.cheapest) {
-    const results = e.products.length > 3 ? e.products : searchProducts(e, catalog)
-    if (results.length > 0 || e.budget !== null || e.color || e.size) {
-      return searchReply(e, results, seed, catalog)
+  // « et pour homme ? » — hérite du type de la recherche précédente
+  const followUpOnly = has(q, 'et ', 'et le', 'et la', 'eux aussi', 'la meme') || q.trim().length < 45
+  if (followUpOnly && e.genre !== null && e.color === null && e.size === null && !faqHint) {
+    const inheritedSub = e.subCategory ?? lastE?.subCategory ?? null
+    const effE: Entities = { ...e, subCategory: inheritedSub }
+    const inLast = lastProducts.filter((p) => norm(p.genre || '').includes(e.genre!))
+    const base = inLast.length > 0 ? inLast : catalog
+    const results = sortByAvailability(base.filter((p) => norm(p.genre || '').includes(e.genre!) && matchesType(p, effE)))
+    if (results.length > 0) {
+      const label = inheritedSub ? `${plural(singular(inheritedSub))} pour ${e.genre}` : `créations pour ${e.genre}`
+      return `${pick(['Avec plaisir, voici nos', 'Voici nos'], seed)} ${label} :\n${productList(results)}\nSouhaitez-vous une précision (couleur, taille, prix) ?`
     }
+  }
+
+  // ── recherche catalogue (entités détectées, hors questions « service ») ──
+  // Une question de service garde la priorité même si elle mentionne des
+  // produits (« vous livrez les sandales à l'étranger ? »).
+  const hasSearchIntent =
+    !faqHint &&
+    (e.products.length > 3 ||
+      e.subCategory !== null ||
+      e.color !== null ||
+      e.size !== null ||
+      e.budget !== null ||
+      e.cheapest ||
+      e.genre !== null)
+  if (hasSearchIntent) {
+    const results = e.products.length > 3 ? e.products : searchProducts(e, catalog)
+    return searchReply(e, results, seed, catalog)
   }
 
   // ── suivi de commande ──
@@ -376,13 +624,18 @@ export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]):
     return `Nous sommes désolés pour ce désagrément. Pour tout échange, remboursement ou demande après-vente, contactez-nous sur WhatsApp (${WHATSAPP}) avec votre numéro de commande : notre équipe étudiera la meilleure solution avec vous, en toute transparence.`
   }
 
+  // ── comment commander ──
+  if (has(q, 'comment commander', 'passer commande', 'faire une commande', 'je veux commander', 'je commande', 'commander')) {
+    return `Commander est simple ✨ Choisissez votre modèle sur la boutique, sélectionnez la taille et la couleur, ajoutez au panier puis réglez en ligne via PayDunya (Mobile Money, XOF). Vous suivez ensuite chaque étape (préparation, prête, livrée) depuis votre espace « Mon Compte ». Besoin d'aide ? WhatsApp ${WHATSAPP}.`
+  }
+
   // ── paiement ──
   if (has(q, 'paiement', 'payer', 'paye', ' paie', 'paydunya', 'mobile money', 'flooz', 'tmoney', 'wave', 'carte', 'especes', 'virement', 'reglement', 'regler', 'credit')) {
     return `Le paiement s'effectue en ligne de façon sécurisée via PayDunya — Mobile Money (Flooz, TMoney…) en francs CFA (XOF). Votre commande est préparée dès confirmation du paiement, et vous suivez chaque étape depuis « Mon Compte » (email + notification à chaque mise à jour). Une question sur un paiement ? WhatsApp : ${WHATSAPP}.`
   }
 
   // ── livraison / international / douanes ──
-  if (has(q, 'livraison', 'livrer', 'livre', 'expedi', 'international', 'etranger', 'douane', 'colis', 'delai', 'frais de port', 'shipping', 'emballage', 'cadeau wrap')) {
+  if (has(q, 'livraison', 'livrer', 'livre', 'livrez', 'expedi', 'international', 'etranger', 'douane', 'colis', 'delai', 'frais de port', 'shipping', 'emballage', 'cadeau wrap')) {
     return `Nous préparons chaque commande dès confirmation du paiement. Le retrait en boutique est possible dès que votre commande est « Prête » (présentez votre numéro de commande), et la livraison locale à Lomé peut être organisée. Les commandes internationales sont expédiées, mais les droits de douane et taxes d'importation restent à la charge du client. Pour une livraison spéciale : WhatsApp ${WHATSAPP}.`
   }
 
@@ -428,10 +681,10 @@ export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]):
 
   // ── conseils / recommandations / cadeaux ──
   if (has(q, 'conseil', 'conseille', 'recommand', 'suggere', 'idee', 'cadeau', 'offrir', 'inspire', 'quelle creation', 'que me conseillez')) {
-    const inStock = catalog.filter((p) => p.totalStock > 0).slice(0, 3)
+    const inStock = catalog.filter((p) => p.totalStock > 0)
     const forWho = e.genre === 'homme' ? 'pour homme' : e.genre === 'femme' ? 'pour femme' : ''
     if (inStock.length > 0) {
-      return `Avec plaisir ✨ Voici quelques-unes de nos créations disponibles ${forWho ? forWho + ' ' : ''}:\n${productList(inStock)}\nDites-moi vos envies (type, couleur, budget, taille) et j'affine la sélection — exemple : « sandales en 39 » ou « budget 60 000 FCFA ».`
+      return `Avec plaisir ✨ Voici quelques-unes de nos créations disponibles ${forWho ? forWho + ' ' : ''}:\n${productList(sortByAvailability(inStock).slice(0, 4))}\nDites-moi vos envies (type, couleur, budget, taille) et j'affine la sélection — exemple : « sandales en 39 » ou « budget 60 000 FCFA ».`
     }
   }
 
@@ -445,7 +698,7 @@ export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]):
     if (lastProducts.length > 0 && has(q, 'prix', 'combien', 'coute')) {
       return `Les voici avec leurs prix :\n${productList(lastProducts)}\nChaque fiche produit détaille couleurs et disponibilités en temps réel.`
     }
-    return `${pick(['Voici notre catalogue du moment ✨', 'Avec plaisir, voici nos créations :', 'Nos modèles actuels :'], seed)}\n${productList(catalog)}\nDites-moi vos envies (type, couleur, budget, taille) et j'affine — ou demandez-moi par modèle.`
+    return `${pick(['Voici notre catalogue du moment ✨', 'Avec plaisir, voici nos créations :', 'Nos modèles actuels :'], seed)}\n${productList(sortByAvailability(catalog))}\nDites-moi vos envies (type, couleur, budget, taille) et j'affine — ou demandez-moi par modèle.`
   }
 
   // ── salutations (messages courts sans autre intention) ──
@@ -460,5 +713,5 @@ function genericReply(catalog: CatalogProduct[], seed: string): string {
   return `${pick([
     'Je suis l\'assistant de MAISON KHAN ✨ Je peux vous renseigner sur nos créations, les prix, les tailles, le paiement (PayDunya) ou les livraisons.',
     'Bienvenue chez MAISON KHAN ✨ Modèles, prix, tailles, livraison — dites-moi tout.',
-  ], seed)}\n${productList(catalog)}\nOu décrivez-moi vos envies : « mules beige », « sac », « budget 50 000 FCFA »… Pour une demande précise : WhatsApp ${WHATSAPP}.`
+  ], seed)}\n${productList(sortByAvailability(catalog))}\nOu décrivez-moi vos envies : « mules beige », « sac », « budget 50 000 FCFA »… Pour une demande précise : WhatsApp ${WHATSAPP}.`
 }

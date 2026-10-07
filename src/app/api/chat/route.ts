@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import ZAI from 'z-ai-web-dev-sdk'
-import { buildLocalReply, type CatalogProduct, type ChatTurn } from './local-fallback'
+import { buildLocalReply, collectionLabel, productTypeLabel, type CatalogProduct, type ChatTurn } from './local-fallback'
 
 /**
  * MAISON KHAN — Assistant virtuel (chatbot de la section Contact).
@@ -117,6 +117,7 @@ async function buildCatalog(): Promise<{ text: string; products: CatalogProduct[
         id: p.id,
         name: p.name,
         type: p.type,
+        category: p.category,
         subCategory: p.subCategory,
         genre: p.genre,
         colors,
@@ -127,8 +128,9 @@ async function buildCatalog(): Promise<{ text: string; products: CatalogProduct[
     })
 
     const lines = mapped.map((p) => {
+      const collection = collectionLabel(p)
       const parts = [
-        `- ${p.name} (${p.type === 'accessoire' ? 'accessoire' : 'chaussure'}${p.subCategory ? `, ${p.subCategory}` : ''}${p.genre ? `, ${p.genre}` : ''})`,
+        `- ${p.name.trim()} (${productTypeLabel(p)}${collection ? ` · ${collection}` : ''})`,
         p.colors.length ? `couleurs : ${p.colors.join(' / ')}` : null,
         p.sizes.length ? `tailles : ${p.sizes.join(', ')}` : null,
         p.minPrice > 0 ? `à partir de ${p.minPrice.toLocaleString('fr-FR')} XOF` : 'prix sur demande',
