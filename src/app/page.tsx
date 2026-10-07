@@ -11,6 +11,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { ClientNotificationsTab } from '@/components/notifications/ClientNotificationsTab'
 import AtelierCarousel, { type AtelierImageData } from '@/components/atelier/AtelierCarousel'
 import SiteChatbot from '@/components/chat/SiteChatbot'
+import VideoTrimmer from '@/components/admin/VideoTrimmer'
 import { checkPushState, subscribeToPush, unsubscribeFromPush, type PushClientState } from '@/lib/push-client'
 
 // Auth Form Component - Separate to prevent re-renders
@@ -972,6 +973,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([])
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>([])
+  const [videoTrimmerOpen, setVideoTrimmerOpen] = useState(false)
   const [atelierImages, setAtelierImages] = useState<AtelierImageData[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [currentProduct, setCurrentProduct] = useState<Product | null>(null)
@@ -2585,7 +2587,7 @@ export default function Home() {
                   <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ${currentSlide === index ? 'opacity-100' : 'opacity-0'}`}>
                     {slide.type === 'video' ? (
                       <div className="relative w-full h-full">
-                        <video src={slide.videoUrl || slide.image || undefined} className="w-full h-full object-cover" autoPlay muted={videoMuted} loop playsInline preload="metadata" id={`hero-video-${slide.id}`} onError={(e) => { const container = (e.target as HTMLVideoElement).parentElement; if (container) container.innerHTML = '<div class="w-full h-full bg-gray-800 flex items-center justify-center"><div class="text-center text-white p-8"><p class="text-lg font-medium">Vidéo non disponible</p></div></div>' }} onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}) }} />
+                        <video src={slide.videoUrl || slide.image || undefined} className="w-full h-full object-cover" autoPlay={index === currentSlide} muted={videoMuted} loop playsInline preload={index === currentSlide ? 'auto' : 'metadata'} id={`hero-video-${slide.id}`} onError={(e) => { const container = (e.target as HTMLVideoElement).parentElement; if (container) container.innerHTML = '<div class="w-full h-full bg-gray-800 flex items-center justify-center"><div class="text-center text-white p-8"><p class="text-lg font-medium">Vidéo non disponible</p></div></div>' }} onCanPlay={(e) => { if (index === currentSlide) (e.target as HTMLVideoElement).play().catch(() => {}) }} />
                       </div>
                     ) : (
                       <img src={slide.image || 'https://placehold.co/1920x1080?text=Slide'} alt={slide.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/1920x1080?text=Slide' }} />
@@ -3031,6 +3033,15 @@ export default function Home() {
                 <div className="mb-12 animate-on-scroll">
                   <p className="text-xs uppercase tracking-widest text-[#6B6560] mb-6">Ou parlez à notre assistant virtuel</p>
                   <SiteChatbot products={products} />
+                  <VideoTrimmer
+                    open={videoTrimmerOpen}
+                    onClose={() => setVideoTrimmerOpen(false)}
+                    onAdded={(slide) => {
+                      setHeroSlides(prev => [...prev.map(s => ({ ...s, image: s.type === 'video' && !s.videoUrl && s.image ? null : s.image })), { ...slide, image: null, videoUrl: `/api/slides/${slide.id}/media?v=${Date.now()}` } as HeroSlide])
+                    }}
+                    onSuccess={(title, description) => showToast(title, description)}
+                    onError={(title, description) => showToast(title, description, "error")}
+                  />
                   <p className="text-[11px] text-[#9C9A92] mt-3">Il connaît nos créations, tailles, paiements et livraisons. Pour une demande personnelle, WhatsApp reste le plus rapide.</p>
                 </div>
                 <div className="animate-on-scroll">
@@ -3714,7 +3725,7 @@ export default function Home() {
               {/* Hero Slides Management */}
               <div className="bg-white p-6 shadow-sm mb-8">
                 <h3 className="font-display text-lg text-[#0A0A0A] mb-1" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Images et Vidéos du Hero Slider</h3>
-                <p className="text-xs text-[#6B6560] mb-4">Première bannière de la page d'accueil. Images : compressées automatiquement. Vidéos : 9 Mo maximum, MP4 conseillé (courte séquence de l'atelier ou des créations).</p>
+                <p className="text-xs text-[#6B6560] mb-4">Première bannière de la page d'accueil. Images : compressées automatiquement. Vidéos : découpe intégrée — chargez n'importe quelle vidéo de votre téléphone, l'outil en extrait le meilleur passage (30 s maximum conseillé) et l'optimise pour le site.</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {heroSlides.map((slide) => (
                     <div key={slide.id} className="relative aspect-video bg-[#EDE8E1] overflow-hidden group">
@@ -3744,36 +3755,11 @@ export default function Home() {
                       }
                     }} />
                   </label>
-                  <label className="aspect-video bg-[#EDE8E1] border-2 border-dashed border-[#6B6560] flex flex-col items-center justify-center cursor-pointer hover:border-[#9C7C5C] transition-colors">
+                  <button type="button" className="aspect-video bg-[#EDE8E1] border-2 border-dashed border-[#6B6560] flex flex-col items-center justify-center cursor-pointer hover:border-[#9C7C5C] transition-colors" onClick={() => setVideoTrimmerOpen(true)}>
                     <svg className="w-6 h-6 text-[#6B6560] mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                     <span className="text-[#6B6560] text-xs">+ Vidéo</span>
-                    <input type="file" accept="video/mp4,video/webm,video/quicktime,video/*" className="hidden" onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      e.target.value = ''
-                      if (!file) return
-                      if (file.size > 9 * 1024 * 1024) {
-                        showToast("Vidéo trop lourde", "9 Mo maximum — raccourcissez-la ou compressez-la (MP4 conseillé)", "error")
-                        return
-                      }
-                      try {
-                        const dataUrl = await new Promise<string>((resolve, reject) => {
-                          const reader = new FileReader()
-                          reader.onload = () => resolve(reader.result as string)
-                          reader.onerror = () => reject(new Error('read'))
-                          reader.readAsDataURL(file)
-                        })
-                        const res = await fetch('/api/slides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: dataUrl, type: 'video', interval: 8000 }) })
-                        if (res.ok) {
-                          const newSlide = await res.json()
-                          setHeroSlides(prev => [...prev.map(s => ({ ...s, image: s.type === 'video' && !s.videoUrl && s.image ? null : s.image })), { ...newSlide, image: null, videoUrl: `/api/slides/${newSlide.id}/media?v=${Date.now()}` }])
-                          showToast("Succès", "La vidéo a été ajoutée au slider")
-                        } else {
-                          const data = await res.json().catch(() => ({}))
-                          showToast("Erreur", data?.error || "Impossible d'ajouter la vidéo", "error")
-                        }
-                      } catch (error) { showToast("Erreur", "Erreur lors de la lecture de la vidéo", "error") }
-                    }} />
-                  </label>
+                    <span className="text-[#9C9A92] text-[10px] mt-0.5">avec découpe</span>
+                  </button>
                 </div>
               </div>
 
