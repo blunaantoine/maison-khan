@@ -24,6 +24,10 @@ export const viewport: Viewport = {
   themeColor: "#F8F6F3",
 };
 
+// URL canonique du site — lit le .env du serveur (https://shop.maison-khan.com en production)
+// Repli sur l'apex si la variable est absente (développement local)
+const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://maison-khan.com";
+
 export const metadata: Metadata = {
   title: {
     default: "MAISON KHAN | Chaussures de Luxe Made in Africa",
@@ -58,7 +62,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "fr_FR",
-    url: "https://maison-khan.com",
+    url: SITE_URL,
     siteName: "MAISON KHAN",
     title: "MAISON KHAN | Chaussures de Luxe Made in Africa",
     description: "Chaussures de luxe artisanales confectionnées au Togo. Made in Africa.",
@@ -94,7 +98,7 @@ export const metadata: Metadata = {
   },
   
   // Autres métadonnées
-  metadataBase: new URL("https://maison-khan.com"),
+  metadataBase: new URL(SITE_URL),
   alternates: {
     canonical: "/",
   },

@@ -126,6 +126,17 @@ else
   exit 1
 fi
 
+# ── 6 bis. .env dans le dossier de production ──
+# Le serveur standalone lit son .env dans .next/standalone/ — sans cette copie,
+# l'app démarre sans base de données ni clé de paiement après le rebuild.
+if [ -f .env ]; then
+  cp .env .next/standalone/.env
+  ok ".env copié dans la version de production"
+else
+  bad ".env introuvable à la racine — l'app démarrera sans configuration !"
+  info "Vérifie : ls -la /var/www/maison-khan/.env"
+fi
+
 # ── 7. Redémarrage de l'application ──
 pm2 restart maison-khan >/dev/null 2>&1
 sleep 5
