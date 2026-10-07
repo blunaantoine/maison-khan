@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import ZAI from 'z-ai-web-dev-sdk'
-import { buildLocalReply, collectionLabel, productTypeLabel, type CatalogProduct, type ChatTurn } from './local-fallback'
+import { buildLocalReply, collectionLabel, productTypeLabel, productsMentionedIn, type CatalogProduct, type ChatTurn } from './local-fallback'
 
 /**
  * MAISON KHAN — Assistant virtuel (chatbot de la section Contact).
  *
  * POST /api/chat
  * Body   : { messages: [{ role: 'user' | 'assistant', content: string }] }
- * Réponse: { reply: string }
+ * Réponse: { reply: string, products: ChatProductCard[] }
+ *          `products` = articles cités dans la réponse (max 6) — le front
+ *          affiche pour chacun une carte cliquable (photo + nom + prix →
+ *          fiche /produit/{id}) sous la bulle de l'assistant.
  *
  * L'assistant « maîtrise le contenu du site » : à chaque requête, le contexte
  * est reconstruit depuis la base — catalogue produits réel (noms, couleurs,
@@ -24,6 +27,24 @@ import { buildLocalReply, collectionLabel, productTypeLabel, type CatalogProduct
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+}
+
+/** Carte produit renvoyée avec la réponse (photo + lien affichées côté front). */
+interface ChatProductCard {
+  id: string
+  name: string
+  price: number // 0 = prix sur demande
+  url: string // fiche produit /produit/{id}
+}
+
+/** Les produits cités dans la réponse deviennent des cartes cliquables. */
+function toProductCards(products: CatalogProduct[]): ChatProductCard[] {
+  return products.slice(0, 6).map((p) => ({
+    id: p.id,
+    name: p.name.trim(),
+    price: p.minPrice,
+    url: `/produit/${p.id}`,
+  }))
 }
 
 const MAX_HISTORY = 10
@@ -229,6 +250,7 @@ export async function POST(request: NextRequest) {
     // catalogue, budget, couleurs, tailles, mémoire de conversation) — il
     // répond de façon autonome lorsque le moteur IA n'est pas joignable.
     let reply: string | null = null
+    let citedProducts: CatalogProduct[] = []
     if (CHAT_AI_MODE !== 'local') {
       try {
         const zai = await withTimeout(ZAI.create().catch(() => null), ZAI_CONNECT_TIMEOUT_MS)
@@ -257,10 +279,16 @@ export async function POST(request: NextRequest) {
       } else {
         console.warn('[chat] Moteur IA indisponible — réponse locale (catalogue réel)')
       }
-      reply = buildLocalReply(history as ChatTurn[], catalogProducts)
+      const local = buildLocalReply(history as ChatTurn[], catalogProducts)
+      reply = local.text
+      citedProducts = local.products
+    } else {
+      // Moteur IA : cartes = produits du catalogue réellement cités dans la
+      // réponse (recherche par nom, même logique que la mémoire conversationnelle).
+      citedProducts = productsMentionedIn(reply, catalogProducts)
     }
 
-    return NextResponse.json({ reply })
+    return NextResponse.json({ reply, products: toProductCards(citedProducts) })
   } catch (error) {
     console.error('[chat] Erreur :', error)
     return NextResponse.json(

@@ -355,12 +355,15 @@ function searchProducts(e: Entities, catalog: CatalogProduct[]): CatalogProduct[
 }
 
 /**
- * Produits mentionnés dans la dernière réponse de l'assistant (mémoire).
+ * Produits mentionnés dans un texte (réponse de l'assistant).
  * Occurrences en ordre de lecture ; si plusieurs produits portent le même nom
  * (ex. deux « Signature », homme et femme), le libellé adjacent « (mule femme) »
  * permet de choisir le bon.
+ *
+ * Utilisé pour la mémoire de conversation ET pour extraire les produits cités
+ * afin d'afficher leurs photos/liens (cartes) sous la réponse.
  */
-function productsFromLastReply(text: string, catalog: CatalogProduct[]): CatalogProduct[] {
+export function productsMentionedIn(text: string, catalog: CatalogProduct[]): CatalogProduct[] {
   if (!text) return []
   const nt = norm(text)
   const occurrences: { p: CatalogProduct; at: number }[] = []
@@ -486,14 +489,14 @@ function searchReply(e: Entities, results: CatalogProduct[], seed: string, catal
 
 // ────────────────────────────── intentions ──────────────────────────────
 
-export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]): string {
+function buildLocalReplyText(history: ChatTurn[], catalog: CatalogProduct[]): string {
   const lastUserTurn = [...history].reverse().find((m) => m.role === 'user')
   const userMsg = lastUserTurn?.content ?? ''
   const q = ` ${norm(userMsg)} `
   const seed = `${userMsg}|${history.length}`
 
   const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? ''
-  const lastProducts = productsFromLastReply(lastAssistant, catalog)
+  const lastProducts = productsMentionedIn(lastAssistant, catalog)
   const lastE = lastAssistant ? extractEntities(` ${norm(lastAssistant)} `, catalog) : null
 
   if (!userMsg.trim()) return genericReply(catalog, seed)
@@ -724,4 +727,25 @@ function genericReply(catalog: CatalogProduct[], seed: string): string {
     'Je suis l\'assistant de MAISON KHAN ✨ Je peux vous renseigner sur nos créations, les prix, les tailles, le paiement (PayDunya) ou les livraisons.',
     'Bienvenue chez MAISON KHAN ✨ Modèles, prix, tailles, livraison — dites-moi tout.',
   ], seed)}\n${productList(sortByAvailability(catalog))}\nOu décrivez-moi vos envies : « mules beige », « sac », « budget 50 000 FCFA »… Pour une demande précise : WhatsApp ${WHATSAPP}.`
+}
+
+// ─────────────────── réponse enrichie (texte + produits cités) ───────────────────
+
+/** Réponse de l'assistant local : texte + produits réellement cités. */
+export interface LocalReply {
+  text: string
+  /** Produits mentionnés dans la réponse (max 6) — photos/liens côté front. */
+  products: CatalogProduct[]
+}
+
+/**
+ * Réponse de l'assistant local : le texte conversationnel ET la liste des
+ * produits réellement cités dans ce texte. Le front affiche sous la bulle une
+ * carte cliquable (photo + nom + prix → fiche /produit/{id}) pour chacun —
+ * le visiteur voit et rejoint directement les articles dont le bot parle.
+ */
+export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]): LocalReply {
+  const text = buildLocalReplyText(history, catalog)
+  const products = productsMentionedIn(text, catalog).slice(0, 6)
+  return { text, products }
 }

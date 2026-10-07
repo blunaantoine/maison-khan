@@ -3015,7 +3015,7 @@ export default function Home() {
                 {/* Assistant virtuel — chatbot intelligent (maîtrise le contenu du site) */}
                 <div className="mb-12 animate-on-scroll">
                   <p className="text-xs uppercase tracking-widest text-[#6B6560] mb-6">Ou parlez à notre assistant virtuel</p>
-                  <SiteChatbot />
+                  <SiteChatbot products={products} />
                   <p className="text-[11px] text-[#9C9A92] mt-3">Il connaît nos créations, tailles, paiements et livraisons. Pour une demande personnelle, WhatsApp reste le plus rapide.</p>
                 </div>
                 <div className="animate-on-scroll">
