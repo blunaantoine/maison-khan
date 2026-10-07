@@ -518,7 +518,7 @@ export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]):
   }
 
   // ── qui es-tu / es-tu un robot ──
-  if (has(q, 'qui es tu', 'qui etes vous', 'es tu un robot', 'tu es un robot', 'es tu humain', 'tu es reel', 'es tu une ia', 'es tu une intelligence')) {
+  if (q.length <= 60 && has(q, 'qui es tu', 'qui es-tu', 'qui etes vous', 'tu es qui', 'es tu un robot', 'es-tu un robot', 'tu es un robot', 'tu es un bot', 'es tu humain', 'tu es reel', 'es tu une ia', 'es tu une intelligence', 'avec qui je parle', 'ton nom', 't appelle', "t'appelle")) {
     return `Je suis l'assistant virtuel de MAISON KHAN ✨ Je vous conseille sur nos créations (modèles, prix, tailles, disponibilités), les paiements PayDunya et les livraisons. Pour tout le reste — conseils d'artisan, commandes sur mesure, après-vente — mes collègues humains vous répondent sur WhatsApp (${WHATSAPP}).`
   }
 
@@ -701,8 +701,18 @@ export function buildLocalReply(history: ChatTurn[], catalog: CatalogProduct[]):
     return `${pick(['Voici notre catalogue du moment ✨', 'Avec plaisir, voici nos créations :', 'Nos modèles actuels :'], seed)}\n${productList(sortByAvailability(catalog))}\nDites-moi vos envies (type, couleur, budget, taille) et j'affine — ou demandez-moi par modèle.`
   }
 
+  // ── objection prix ──
+  if (has(q, 'trop cher', 'trop chere', 'si cher', "c'est cher", 'c est cher', "c'est chere", 'c est chere', 'hors de prix')) {
+    return `Chaque création est assemblée main par nos artisans, avec des cuirs sélectionnés — pensée pour durer 💛 Donnez-moi votre budget (« budget 25 000 FCFA ») et je vous montre nos modèles les plus proches.`
+  }
+
+  // ── small talk : « comment tu va ? », « ça va ? » (messages courts) ──
+  if (q.length <= 40 && has(q, 'comment tu va', 'comment tu vas', 'comment va', 'comment allez', 'allez bien', 'tu va bien', 'tu vas bien', 'ca va', 'sa va', 'cava', 'cv', 'wesh', 'ca dit quoi')) {
+    return `${pick(['Je vais très bien, merci ✨ Et vous ?', 'À merveille, merci — prêt(e) à vous trouver la paire parfaite ✨', 'Très bien, merci ! Et votre journée ?'], seed)} Dites-moi ce que vous cherchez : « sandales pour femme », « budget 60 000 FCFA »…`
+  }
+
   // ── salutations (messages courts sans autre intention) ──
-  if (has(q, 'bonjour', 'salut', 'bonsoir', 'hello', 'coucou', 'bjr', 'slt', 'hey', 'allo', 'salam', 'bonne journee a tous')) {
+  if (has(q, 'bonjour', 'salut', 'bonsoir', 'hello', 'coucou', 'bjr', 'slt', 'hey', 'allo', 'salam', 'yo', 'bonne journee a tous')) {
     return `${pick(['Bonjour et bienvenue chez MAISON KHAN ✨', 'Bonjour ! Ravi de vous recevoir ✨', 'Bonsoir et bienvenue ✨'], seed)} Je peux vous renseigner sur nos créations, les prix, les tailles, le paiement ou les livraisons. Essayez par exemple : « sandales pour femme », « budget 60 000 FCFA » ou « qu'avez-vous en taille 39 ? »`
   }
 
