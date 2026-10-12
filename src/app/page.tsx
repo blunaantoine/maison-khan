@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { getConsent } from '@/lib/consent'
 import { sendBrowserNotification } from '@/components/consent/notifications'
+import KPrimePayCardButton from '@/components/payments/KPrimePayCardButton'
 
 // DÉBUT FEDAPAY TYPE DECLARATION
 declare global {
@@ -406,6 +407,8 @@ useImperativeHandle(ref, () => ({
 
             {/* FIN BOUTON PAYDUNYA */}
 
+            <KPrimePayCardButton orderItems={orderItems} user={user} checkoutFormRef={checkoutFormRef} />
+            
           </div>
 
           {/* <div className="bg-[#EDE8E1] p-4 text-sm space-y-2">
