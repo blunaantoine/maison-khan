@@ -12,6 +12,7 @@ import { ClientNotificationsTab } from '@/components/notifications/ClientNotific
 import AtelierCarousel, { type AtelierImageData } from '@/components/atelier/AtelierCarousel'
 import SiteChatbot from '@/components/chat/SiteChatbot'
 import VideoTrimmer from '@/components/admin/VideoTrimmer'
+import KPrimePayCardButton from '@/components/payments/KPrimePayCardButton'
 import { checkPushState, subscribeToPush, unsubscribeFromPush, type PushClientState } from '@/lib/push-client'
 
 // Auth Form Component - Separate to prevent re-renders
@@ -401,6 +402,9 @@ useImperativeHandle(ref, () => ({
                 </div>
               </div>
             </button>
+
+            {/* Carte bancaire via KPrimePay — Mobile Money reste PayDunya */}
+            <KPrimePayCardButton orderItems={orderItems as { id?: string; name: string; size: string; colorName?: string; price: number; qty: number; image?: string }[]} user={user} checkoutFormRef={checkoutFormRef} />
 
           </div>
 

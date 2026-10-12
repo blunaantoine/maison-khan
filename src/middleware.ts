@@ -221,7 +221,14 @@ export async function middleware(req: NextRequest) {
         request: { headers: requestHeaders },
       })
     }
-    return NextResponse.next()
+    // Sans session : on RETIRE tout header d'identité envoyé par le client
+    // pour empêcher l'usurpation (un invité ne peut pas rattacher une commande
+    // au compte de quelqu'un d'autre).
+    const cleaned = new Headers(req.headers)
+    cleaned.delete('x-auth-user-id')
+    cleaned.delete('x-auth-role')
+    cleaned.delete('x-auth-email')
+    return NextResponse.next({ request: { headers: cleaned } })
   }
 
   return NextResponse.next()
