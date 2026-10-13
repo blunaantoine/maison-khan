@@ -62,6 +62,12 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   const currentPrice = getCurrentPrice();
   const currentStock = getCurrentStock();
 
+  // Produit entièrement épuisé (toutes couleurs/tailles à 0) — ou sélection
+  // actuelle sans stock. Dans ce cas les boutons d'achat en ligne disparaissent
+  // totalement pour ne laisser que « Commander via WhatsApp » (bien visible).
+  const isProductEpuise = (product.totalStock || 0) <= 0;
+  const isEpuise = isProductEpuise || currentStock === 0;
+
   // URL de partage
   const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
   const shareText = `Découvrez ${product.name} sur Maison Khan`;
@@ -136,10 +142,12 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   };
 
   const handleWhatsAppOrder = () => {
-    const phone = '22890000000';
+    // Numéro officiel de la maison (même numéro que le reste du site)
+    const phone = '22870166767';
     const lines = [
       'Bonjour Maison Khan, je souhaite commander :',
       '',
+      isEpuise ? '⚠️ Produit actuellement épuisé — je souhaite être informé(e) du réapprovisionnement :' : null,
       `📦 ${product.name}`,
       selectedColor ? `🎨 Couleur : ${selectedColor.colorName}` : null,
       selectedSize ? `📏 Taille : ${selectedSize}` : null,
@@ -413,6 +421,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
             )}
 
             {/* === QUANTITÉ === */}
+            {!isEpuise && (
             <div className="mb-8">
               <label className="text-xs tracking-widest uppercase text-[#0A0A0A] mb-3 block">
                 Quantité
@@ -435,9 +444,38 @@ export default function ProductDetail({ product }: ProductDetailProps) {
                 </button>
               </div>
             </div>
+            )}
 
             {/* === BOUTONS D'ACTION === */}
+            {/* Produit/sélection épuisé(e) : les boutons d'achat en ligne
+                disparaissent complètement — seul « Commander via WhatsApp »
+                reste affiché, en vert et bien visible. */}
             <div className="flex flex-col gap-3 mb-8">
+              {isEpuise ? (
+                <>
+                  <div className="border border-red-200 bg-red-50 px-4 py-4 text-center">
+                    <p className="text-xs tracking-[0.2em] uppercase text-red-700 font-semibold">
+                      {isProductEpuise ? 'Produit épuisé' : 'Cette taille est épuisée'}
+                    </p>
+                    <p className="text-xs text-[#6B6560] mt-2 leading-relaxed">
+                      La commande en ligne est désactivée pour éviter toute erreur.
+                      Commandez via WhatsApp : nous vous répondons rapidement
+                      (délais, réapprovisionnement, équivalences).
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleWhatsAppOrder}
+                    className="w-full py-4 bg-[#25D366] text-white text-xs tracking-[0.2em] uppercase hover:bg-[#1FB857] transition-colors flex items-center justify-center gap-3 shadow-lg shadow-[#25D366]/25"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Commander via WhatsApp
+                  </button>
+                  <p className="text-[11px] text-[#9C9A92] text-center tracking-wide">
+                    Réponse directe de la maison — même pour un produit épuisé.
+                  </p>
+                </>
+              ) : (
+                <>
               <button
                 onClick={handleAddToCart}
                 disabled={!selectedSize || currentStock === 0}
@@ -467,12 +505,13 @@ export default function ProductDetail({ product }: ProductDetailProps) {
 
               <button
                 onClick={handleWhatsAppOrder}
-                disabled={currentStock === 0}
-                className="w-full py-4 border border-[#0A0A0A] text-[#0A0A0A] text-xs tracking-[0.2em] uppercase hover:bg-[#0A0A0A] hover:text-[#F8F6F3] transition-colors disabled:opacity-50 flex items-center justify-center gap-3"
+                className="w-full py-4 border border-[#0A0A0A] text-[#0A0A0A] text-xs tracking-[0.2em] uppercase hover:bg-[#0A0A0A] hover:text-[#F8F6F3] transition-colors flex items-center justify-center gap-3"
               >
                 <MessageCircle className="w-4 h-4" />
                 Commander via WhatsApp
               </button>
+                </>
+              )}
             </div>
 
             {/* === PARTAGE === */}

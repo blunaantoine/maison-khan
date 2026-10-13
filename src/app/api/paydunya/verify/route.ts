@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
+import { syncKppPayment } from '@/lib/kprimepay'
 
 const PAYDUNYA_MODE = process.env.PAYDUNYA_MODE || 'test'
 const PAYDUNYA_BASE =
@@ -8,6 +9,14 @@ const PAYDUNYA_BASE =
     ? 'https://app.paydunya.com/api/v1'
     : 'https://app.paydunya.com/sandbox-api/v1'
 
+/**
+ * Endpoint générique de vérification par orderId/token.
+ * Utilisé par les pages de retour boutique (payment-success) pour TOUTES les
+ * méthodes de paiement :
+ *  - paydunya  → confirmation en direct chez PayDunya (checkout-invoice/confirm)
+ *  - kprimepay → resynchronisation via l'API KPrimePay (transactions/debit-status)
+ * Le statut de base est retourné si la confirmation live est indisponible.
+ */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
 
@@ -32,15 +41,30 @@ export async function GET(request: NextRequest) {
 
     let liveStatus = payment?.status ?? 'pending'
 
+    // ── Paiement carte / USSD via KPrimePay : on resynchronise auprès de
+    // KPrimePay (source de vérité). Idempotent — ne touche jamais un paiement
+    // déjà conclus (completed/failed).
+    if (payment?.paymentMethod === 'kprimepay' && payment.transactionId) {
+      try {
+        const result = await syncKppPayment(payment.transactionId, 'verify-retour')
+        if (result === 'completed') liveStatus = 'completed'
+        else if (result === 'failed') liveStatus = 'failed'
+        // pending / not_found / amount_mismatch → on garde le statut en base
+      } catch (e) {
+        console.warn('[verify] Erreur synchronisation KPrimePay:', e)
+        // statut en base conservé
+      }
+    }
     // Confirmation en direct chez PayDunya : avec le token fourni, OU avec le
     // token stocké en base (cas du retour boutique où seule l'orderId revient).
     // Indépendant de l'IPN callback, qui peut arriver plus tard.
     // Clés absentes (ex. sandbox) → pas de confirmation live possible,
     // on se contente du statut en base.
-    const confirmToken = (masterKey && privateKey && apiToken)
-      ? (token || payment?.transactionId)
-      : null
-    if (confirmToken) {
+    else {
+      const confirmToken = (masterKey && privateKey && apiToken)
+        ? (token || payment?.transactionId)
+        : null
+      if (confirmToken) {
       try {
         const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${confirmToken}`, {
           headers: {
@@ -110,6 +134,7 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {
         console.warn('[verify] Erreur confirmation PayDunya:', e)
+      }
       }
     }
 

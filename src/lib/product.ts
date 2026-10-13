@@ -101,7 +101,7 @@ export function getColorHex(colorValue: string): string {
  * Génère un lien WhatsApp pré-rempli pour un produit
  */
 export function getWhatsAppLink(product: Product, selectedColor?: string, selectedSize?: string): string {
-  const phone = '22890000000'; // À adapter selon le numéro de la maison
+  const phone = '22870166767'; // Numéro officiel de la maison
   let text = `Bonjour Maison Khan, je suis intéressé(e) par ce produit : ${product.name}`;
 
   if (selectedColor) {

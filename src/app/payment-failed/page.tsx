@@ -21,7 +21,8 @@ function PaymentFailedContent() {
 
 
 
-  // Relancer le paiement (même mécanisme que le tableau de bord client)
+  // Relancer le paiement — route vers le BON moyen (carte KPrimePay ou
+  // Mobile Money PayDunya) selon la méthode du dernier paiement de la commande.
 
   const handleRetry = async () => {
 
@@ -33,13 +34,37 @@ function PaymentFailedContent() {
 
     try {
 
-      const res = await fetch('/api/paydunya-psr', {
+      const mRes = await fetch('/api/payments/retry', {
 
         method: 'POST',
 
         headers: { 'Content-Type': 'application/json' },
 
         body: JSON.stringify({ orderId }),
+
+      })
+
+      const mData = await mRes.json()
+
+      if (!mRes.ok || !mData.success) {
+
+        setRetryError(mData.error || 'Impossible de relancer le paiement.')
+
+        setRetrying(false)
+
+        return
+
+      }
+
+      const endpoint = mData.method === 'kprimepay' ? '/api/kprimepay/init' : '/api/paydunya-psr'
+
+      const res = await fetch(endpoint, {
+
+        method: 'POST',
+
+        headers: { 'Content-Type': 'application/json' },
+
+        body: JSON.stringify({ orderId, ...(mData.method === 'kprimepay' ? { method: 'card' } : {}) }),
 
       })
 

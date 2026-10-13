@@ -98,15 +98,33 @@ function PaymentSuccessContent() {
   }, [orderId, verifyNonce])
 
   // ── Relancer le paiement (même mécanisme que le tableau de bord client) ──
+  // La commande peut avoir été tentée par carte (KPrimePay) OU Mobile Money
+  // (PayDunya) : on demande au serveur la méthode du dernier paiement puis on
+  // relance le bon checkout.
   const handleRetry = async () => {
     if (!orderId || retrying) return
     setRetrying(true)
     setRetryError(null)
     try {
-      const res = await fetch('/api/paydunya-psr', {
+      // 1. Quelle méthode pour cette commande ?
+      const mRes = await fetch('/api/payments/retry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
+      })
+      const mData = await mRes.json()
+      if (!mRes.ok || !mData.success) {
+        setRetryError(mData.error || 'Impossible de relancer le paiement.')
+        setRetrying(false)
+        return
+      }
+
+      // 2. Relancer le bon moyen de paiement
+      const endpoint = mData.method === 'kprimepay' ? '/api/kprimepay/init' : '/api/paydunya-psr'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, ...(mData.method === 'kprimepay' ? { method: 'card' } : {}) }),
       })
       const data = await res.json()
       if (data.success && data.url) {
