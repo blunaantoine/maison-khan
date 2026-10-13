@@ -103,4 +103,5 @@ NEXT_PUBLIC_BASE_URL=https://maison-khan.com
 
 ---
 
-Développé par **STUDIO** 🎨
+Développé par **VISIBLE STUDIO CONTACT 91986792
+** 🎨
