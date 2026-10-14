@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/auth'
+import { materializeDataUris } from '@/lib/uploads'
 
 async function authorizeAdmin(request: NextRequest) {
   const user = await getAuthUser(request)
@@ -66,7 +67,10 @@ export async function POST(request: NextRequest) {
     const admin = await authorizeAdmin(request)
     if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
-    const body = await request.json()
+    // Les data URIs (base64) des images deviennent des fichiers servis par
+    // /api/img/... — la base ne stocke plus que des URLs légères.
+    // (Idempotent : les URLs déjà converties restent inchangées.)
+    const body = materializeDataUris(await request.json(), 'prod')
     const { name, description, category, subCategory, genre, image, sizes, type, isBestSeller, isNew, colors } = body
     
     console.log('[PRODUCT] Creating product:', { name, category, colorsCount: colors?.length })
@@ -154,7 +158,9 @@ export async function PUT(request: NextRequest) {
     const admin = await authorizeAdmin(request)
     if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
-    const body = await request.json()
+    // Les data URIs (base64) des images deviennent des fichiers servis par
+    // /api/img/... — la base ne stocke plus que des URLs légères.
+    const body = materializeDataUris(await request.json(), 'prod')
     const { id, name, description, category, subCategory, genre, image, sizes, type, isActive, isBestSeller, isNew, colors } = body
     
     console.log('[PRODUCT] Updating product:', { id, name, colorsCount: colors?.length })

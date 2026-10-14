@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/auth'
+import { materializeDataUris } from '@/lib/uploads'
 
 /**
  * Images de l'atelier (production artisanale) — carrousels accueil + à propos.
@@ -37,7 +38,8 @@ export async function POST(request: NextRequest) {
     const admin = await authorizeAdmin(request)
     if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
-    const body = await request.json()
+    // Le data URI (base64) devient un fichier servi par /api/img/...
+    const body = materializeDataUris(await request.json(), 'atelier')
     const { image, caption } = body
 
     if (!image || typeof image !== 'string') {

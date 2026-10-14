@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/auth'
+import { materializeDataUris } from '@/lib/uploads'
 
 async function authorizeAdmin(request: NextRequest) {
   const user = await getAuthUser(request)
@@ -28,7 +29,8 @@ export async function POST(request: NextRequest) {
     const admin = await authorizeAdmin(request)
     if (!admin) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
-    const body = await request.json()
+    // Le data URI (base64) devient un fichier servi par /api/img/...
+    const body = materializeDataUris(await request.json(), 'logo')
     const { value } = body
     
     const logo = await db.siteSetting.upsert({
