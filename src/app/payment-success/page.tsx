@@ -30,8 +30,16 @@ type ScreenState =
   | 'still_pending'
   | 'error'
 
-const MAX_ATTEMPTS = 10
-const POLL_INTERVAL_MS = 2500
+// Vérification adaptative : rapide juste après le paiement (le client vient
+// de valider, il attend une réponse), puis plus espacée (mobile money parfois
+// lent) au lieu d'abandonner après 25 s.
+const FAST_ATTEMPTS = 15 // 15 × 2 s = 30 s de vérification rapide
+const FAST_INTERVAL_MS = 2000
+const SLOW_INTERVAL_MS = 5000
+const MAX_ATTEMPTS = 51 // ≈ 3 min de vérification au total
+
+const delayForAttempt = (attempt: number) =>
+  attempt <= FAST_ATTEMPTS ? FAST_INTERVAL_MS : SLOW_INTERVAL_MS
 
 function PaymentSuccessContent() {
   const searchParams = useSearchParams()
@@ -41,6 +49,7 @@ function PaymentSuccessContent() {
   const [verifyNonce, setVerifyNonce] = useState(0)
   const [retrying, setRetrying] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
+  const [attemptsDisplay, setAttemptsDisplay] = useState(0)
 
   // ── Vérification du paiement (polling) ──
   useEffect(() => {
@@ -52,6 +61,7 @@ function PaymentSuccessContent() {
 
     const checkPayment = async () => {
       attempts++
+      setAttemptsDisplay(attempts)
       try {
         const res = await fetch(
           `/api/paydunya/verify?orderId=${encodeURIComponent(orderId)}`,
@@ -75,14 +85,14 @@ function PaymentSuccessContent() {
         }
         // pending (ou réponse inattendue) → on continue de vérifier
         if (attempts < MAX_ATTEMPTS) {
-          timer = setTimeout(checkPayment, POLL_INTERVAL_MS)
+          timer = setTimeout(checkPayment, delayForAttempt(attempts))
         } else {
           setState('still_pending')
         }
       } catch {
         if (cancelled) return
         if (attempts < MAX_ATTEMPTS) {
-          timer = setTimeout(checkPayment, POLL_INTERVAL_MS)
+          timer = setTimeout(checkPayment, delayForAttempt(attempts))
         } else {
           setState('still_pending')
         }
@@ -160,6 +170,9 @@ function PaymentSuccessContent() {
               <p className="text-[#6B6560] text-sm">
                 Nous confirmons votre transaction auprès de notre prestataire de paiement.
                 Cela ne prend que quelques secondes, ne fermez pas cette page.
+              </p>
+              <p className="text-[#9C9A92] text-xs tabular-nums">
+                Vérifications automatiques en cours… ({attemptsDisplay})
               </p>
               {orderLabel && (
                 <p className="text-xs text-[#9C9A92] uppercase tracking-widest">

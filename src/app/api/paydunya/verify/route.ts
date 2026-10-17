@@ -10,6 +10,16 @@ const PAYDUNYA_BASE =
     : 'https://app.paydunya.com/sandbox-api/v1'
 
 /**
+ * La page de retour interroge cette route toutes les 2 s : on ne sollicite
+ * l'API PayDunya qu'au plus une fois toutes les 4 s par token. Entre deux
+ * appels distants, on renvoie l'état de la base (mis à jour instantanément
+ * par l'IPN /api/paydunya/callback) — la vérification paraît instantanée
+ * dès que PayDunya nous a notifiés.
+ */
+const MIN_REMOTE_INTERVAL_MS = 4000
+const lastRemoteCheck = new Map<string, number>()
+
+/**
  * Endpoint générique de vérification par orderId/token.
  * Utilisé par les pages de retour boutique (payment-success) pour TOUTES les
  * méthodes de paiement :
@@ -41,10 +51,17 @@ export async function GET(request: NextRequest) {
 
     let liveStatus = payment?.status ?? 'pending'
 
+    // ── Raccourci instantané : le statut est déjà tranché en base
+    // (webhook/IPN arrivé, retry, double visite…) → aucune requête vers le
+    // prestataire, la page affiche le résultat immédiatement.
+    if (payment && ['completed', 'failed', 'cancelled'].includes(payment.status)) {
+      // Pas d'appel distant : la base fait foi (elle n'est écrite qu'après
+      // confirmation du prestataire ou de son IPN).
+    }
     // ── Paiement carte / USSD via KPrimePay : on resynchronise auprès de
     // KPrimePay (source de vérité). Idempotent — ne touche jamais un paiement
     // déjà conclus (completed/failed).
-    if (payment?.paymentMethod === 'kprimepay' && payment.transactionId) {
+    else if (payment?.paymentMethod === 'kprimepay' && payment.transactionId) {
       try {
         const result = await syncKppPayment(payment.transactionId, 'verify-retour')
         if (result === 'completed') liveStatus = 'completed'
@@ -65,6 +82,43 @@ export async function GET(request: NextRequest) {
         ? (token || payment?.transactionId)
         : null
       if (confirmToken) {
+        // Limitation d'appels : au plus une confirmation live toutes les 4 s
+        // par token. Entre deux appels, réponse immédiate depuis la base.
+        const now = Date.now()
+        if (now - (lastRemoteCheck.get(confirmToken) ?? 0) < MIN_REMOTE_INTERVAL_MS) {
+          // pending (ou statut en base) renvoyé sans attendre PayDunya
+          const orderFast = payment?.order ?? (orderId
+            ? await db.order.findUnique({ where: { id: orderId }, include: { items: true } })
+            : null)
+          if (!orderFast) {
+            return NextResponse.json({ success: false, error: 'Commande introuvable' }, { status: 404 })
+          }
+          return NextResponse.json({
+            success: true,
+            status: liveStatus,
+            paidAt: payment?.paidAt ?? null,
+            order: {
+              id: orderFast.id,
+              orderNumber: orderFast.orderNumber,
+              total: orderFast.total,
+              customerName: [orderFast.customerFirstName, orderFast.customerLastName].filter(Boolean).join(' ') || 'Client',
+              customerEmail: orderFast.customerEmail,
+              customerPhone: orderFast.customerPhone,
+              createdAt: orderFast.createdAt,
+              items: orderFast.items.map(i => ({
+                name: i.productName,
+                size: i.size,
+                colorName: i.colorName,
+                quantity: i.quantity,
+                unitPrice: i.unitPrice,
+                total: i.totalPrice,
+              })),
+            },
+          })
+        }
+        lastRemoteCheck.set(confirmToken, now)
+        if (lastRemoteCheck.size > 1000) lastRemoteCheck.clear()
+
       try {
         const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${confirmToken}`, {
           headers: {
@@ -72,7 +126,7 @@ export async function GET(request: NextRequest) {
             'PAYDUNYA-PRIVATE-KEY': privateKey,
             'PAYDUNYA-TOKEN': apiToken,
           },
-          signal: AbortSignal.timeout(10000), // jamais bloquer le retour client > 10 s
+          signal: AbortSignal.timeout(8000), // jamais bloquer le retour client > 8 s
         })
         const invoice = await confirmRes.json()
 

@@ -2638,7 +2638,7 @@ export default function Home() {
                     ) : (
                       <img src={slide.image || 'https://placehold.co/1920x1080?text=Slide'} alt={slide.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/1920x1080?text=Slide' }} />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#F8F6F3]/30 to-[#F8F6F3]"></div>
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#F8F6F3]/50 to-[#F8F6F3]"></div>
                   </div>
                 ))}
               </div>
@@ -2688,7 +2688,7 @@ export default function Home() {
                     <span className="font-light">{getContent('hero_title_highlight', '')}</span>
                   </h1>
                   {getContent('hero_description', '') && (
-                    <p className="text-lg lg:text-xl text-[#6B6560] max-w-xl mb-12 font-light leading-relaxed animate-on-scroll">{getContent('hero_description', '')}</p>
+                    <p className="inline-block text-lg lg:text-xl text-[#3E3A34] max-w-xl mb-12 font-light leading-relaxed animate-on-scroll bg-white/70 backdrop-blur-md rounded-2xl shadow-[0_10px_40px_rgba(10,10,10,0.12)] ring-1 ring-[#0A0A0A]/5 px-6 py-5 lg:px-8 lg:py-6">{getContent('hero_description', '')}</p>
                   )}
                   <div className="flex flex-wrap gap-4 animate-on-scroll">
                     {getContent('hero_button_primary', '') && (
