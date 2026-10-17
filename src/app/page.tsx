@@ -1010,8 +1010,6 @@ export default function Home() {
   const [maisonImage, setMaisonImage] = useState<string | null>(null)
   const [formType, setFormType] = useState<'chaussure' | 'accessoire'>('chaussure')
   const [isLoading, setIsLoading] = useState(false)
-  const [videoMuted, setVideoMuted] = useState(true)
-  const [videoPlaying, setVideoPlaying] = useState(true)
   const [adminPassword, setAdminPassword] = useState('')
   const [adminTab, setAdminTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'notifications' | 'settings'>('dashboard')
   const [notificationsUnread, setNotificationsUnread] = useState(0)
@@ -1798,24 +1796,21 @@ export default function Home() {
   }, [heroSlides, currentSlide, showAuthModal, showProductModal, showCheckoutModal, showProductFormModal, showSubCatModal])
 
   // Vidéos du hero : seule la slide active lit sa vidéo — les autres sont
-  // mises en pause (économie CPU/batterie). L'état muet/son s'applique à
-  // toutes les vidéos ; si le navigateur refuse la lecture avec son (pas
-  // encore d'interaction visiteur), on retente en muet pour ne jamais
-  // bloquer le slider.
+  // mises en pause (économie CPU/batterie). Les vidéos restent toujours
+  // muettes : obligation navigateur pour l'autoplay, et plus aucun bouton
+  // de son sur le slider (demande du propriétaire).
   useEffect(() => {
     heroSlides.forEach((slide, index) => {
       if (slide.type !== 'video') return
       const video = document.getElementById(`hero-video-${slide.id}`) as HTMLVideoElement | null
       if (!video) return
-      video.muted = videoMuted
+      video.muted = true
       if (index === currentSlide) {
-        video.play().catch(() => {
-          if (!video.muted) { video.muted = true; video.play().catch(() => {}) }
-        })
+        video.play().catch(() => {})
       }
       else video.pause()
     })
-  }, [currentSlide, heroSlides, videoMuted])
+  }, [currentSlide, heroSlides])
 
   // Scroll handler
   useEffect(() => {
@@ -2626,10 +2621,12 @@ export default function Home() {
         {/* HOME SECTION */}
         <section className={`page-section ${currentSection === 'home' ? 'active' : ''}`} id="home">
           {/* Hero with Slider */}
-          {/* Hero 100 % visuel : le texte descriptif et les boutons du hero
-              ont été retirés définitivement (demande du propriétaire). Le
-              slider n'affiche plus que les images/vidéos en plein écran, avec
-              un léger fondu bas pour enchaîner sur la section suivante. */}
+          {/* Hero 100 % visuel : le texte descriptif et TOUS les boutons du
+              slider (flèches, pastilles, bouton son) ont été retirés
+              définitivement (demande du propriétaire). Le slider avance
+              automatiquement et n'affiche plus que les images/vidéos en
+              plein écran, avec un léger fondu bas pour enchaîner sur la
+              section suivante. */}
           <div className="relative min-h-screen flex items-end grain" style={{ background: 'linear-gradient(180deg, #F8F6F3 0%, #EDE8E1 100%)' }}>
             {heroSlides.length > 0 && (
               <div className="absolute inset-0 overflow-hidden">
@@ -2637,7 +2634,7 @@ export default function Home() {
                   <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ${currentSlide === index ? 'opacity-100' : 'opacity-0'}`}>
                     {slide.type === 'video' ? (
                       <div className="relative w-full h-full">
-                        <video src={slide.videoUrl || slide.image || undefined} className="w-full h-full object-cover" autoPlay={index === currentSlide} muted={videoMuted} loop playsInline preload={index === currentSlide ? 'auto' : 'metadata'} id={`hero-video-${slide.id}`} onError={(e) => { const container = (e.target as HTMLVideoElement).parentElement; if (container) container.innerHTML = '<div class="w-full h-full bg-gray-800 flex items-center justify-center"><div class="text-center text-white p-8"><p class="text-lg font-medium">Vidéo non disponible</p></div></div>' }} onCanPlay={(e) => { if (index === currentSlide) (e.target as HTMLVideoElement).play().catch(() => {}) }} />
+                        <video src={slide.videoUrl || slide.image || undefined} className="w-full h-full object-cover" autoPlay={index === currentSlide} muted loop playsInline preload={index === currentSlide ? 'auto' : 'metadata'} id={`hero-video-${slide.id}`} onError={(e) => { const container = (e.target as HTMLVideoElement).parentElement; if (container) container.innerHTML = '<div class="w-full h-full bg-gray-800 flex items-center justify-center"><div class="text-center text-white p-8"><p class="text-lg font-medium">Vidéo non disponible</p></div></div>' }} onCanPlay={(e) => { if (index === currentSlide) (e.target as HTMLVideoElement).play().catch(() => {}) }} />
                       </div>
                     ) : (
                       <img src={slide.image || 'https://placehold.co/1920x1080?text=Slide'} alt={slide.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/1920x1080?text=Slide' }} />
@@ -2648,42 +2645,6 @@ export default function Home() {
               </div>
             )}
 
-            {heroSlides.length > 1 && (
-              <>
-                <button className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40 backdrop-blur-sm rounded-full flex items-center justify-center transition-colors z-10" onClick={() => setCurrentSlide(prev => prev === 0 ? heroSlides.length - 1 : prev - 1)}>
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <button className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40 backdrop-blur-sm rounded-full flex items-center justify-center transition-colors z-10" onClick={() => setCurrentSlide(prev => (prev + 1) % heroSlides.length)}>
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                </button>
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-                  {heroSlides.map((slide, index) => (
-                    <button key={index} aria-label={`Aller au slide ${index + 1}`} className={`w-2.5 h-2.5 rounded-full transition-all ${currentSlide === index ? 'bg-[#0A0A0A] scale-125' : 'bg-[#0A0A0A]/25 hover:bg-[#0A0A0A]/40'}`} onClick={() => setCurrentSlide(index)} />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Son des vidéos du hero : les navigateurs imposent un clic du
-                visiteur avant de jouer le son (règle anti-pub intrusive).
-                Les vidéos démarrent donc muettes ; un clic active la musique
-                pour toute la visite. */}
-            {heroSlides[currentSlide]?.type === 'video' && (
-              <button
-                className="absolute bottom-6 right-6 w-11 h-11 bg-[#0A0A0A]/10 hover:bg-[#0A0A0A]/20 rounded-full flex items-center justify-center transition-colors z-10"
-                onClick={() => setVideoMuted(m => !m)}
-                aria-label={videoMuted ? 'Activer le son de la vidéo' : 'Couper le son de la vidéo'}
-                aria-pressed={!videoMuted}
-                title={videoMuted ? 'Activer le son' : 'Couper le son'}
-              >
-                {videoMuted ? (
-                  <svg className="w-5 h-5 text-[#2C2C2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><line x1="23" y1="9" x2="17" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /><line x1="17" y1="9" x2="23" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /></svg>
-                ) : (
-                  <svg className="w-5 h-5 text-[#2C2C2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15.54 8.46a5 5 0 010 7.07" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19.07 4.93a10 10 0 010 14.14" /></svg>
-                )}
-              </button>
-            )}
-
           </div>
 
           {/* Nouveautés Section */}
@@ -2692,7 +2653,6 @@ export default function Home() {
               <div className="text-center mb-12">
                 <p className="hero-subtitle text-[#9C7C5C] mb-4 animate-on-scroll">{getContent('new_subtitle', 'Nouveautés')}</p>
                 <h2 className="font-display text-4xl lg:text-5xl text-[#0A0A0A] animate-on-scroll" style={{ fontFamily: "'Cormorant Garamond', serif" }}>{getContent('new_title', 'Dernières Créations')}</h2>
-                <p className="text-[#6B6560] mt-4 max-w-2xl mx-auto animate-on-scroll">{getContent('new_description', 'Découvrez nos dernières pièces artisanales, fraîchement confectionnées par nos artisans.')}</p>
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 {(() => {
@@ -2719,7 +2679,6 @@ export default function Home() {
               <div className="text-center mb-12">
                 <p className="hero-subtitle text-[#9C7C5C] mb-4 animate-on-scroll">Incontournables</p>
                 <h2 className="font-display text-4xl lg:text-5xl text-[#0A0A0A] animate-on-scroll" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Best-Sellers</h2>
-                <p className="text-[#6B6560] mt-4 max-w-2xl mx-auto animate-on-scroll">Les créations préférées de nos clients, symboles de notre excellence.</p>
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 {(() => {
@@ -2739,7 +2698,6 @@ export default function Home() {
               <div className="text-center mb-12">
                 <p className="hero-subtitle text-[#9C7C5C] mb-4 animate-on-scroll">Artisanat</p>
                 <h2 className="font-display text-4xl lg:text-5xl text-[#0A0A0A] animate-on-scroll" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Notre Savoir-Faire</h2>
-                <p className="text-[#6B6560] mt-4 max-w-2xl mx-auto animate-on-scroll">Chaque paire est le fruit d&apos;un savoir-faire ancestral, transmis de génération en génération.</p>
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
                 {/* Step 1 */}
