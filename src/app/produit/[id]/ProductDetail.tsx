@@ -7,7 +7,7 @@ import {
   ShoppingBag,
   Heart,
   Share2,
-  Copy,
+  Instagram,
   Check,
   MessageCircle,
   Truck,
@@ -88,11 +88,12 @@ export default function ProductDetail({ product }: ProductDetailProps) {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const handleShareFacebook = () => {
-    window.open(
-      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`,
-      '_blank'
-    );
+  // Instagram : pas d'URL de partage web universelle — on ouvre le profil
+  // officiel de la maison (même lien que le footer) pour suivre et commander
+  // en message privé.
+  const INSTAGRAM_URL = 'https://www.instagram.com/maisonkhanofficial?stkn=cHE3YWU4b28zOGxq';
+  const handleShareInstagram = () => {
+    window.open(INSTAGRAM_URL, '_blank');
   };
 
   const handleAddToCart = () => {
@@ -449,20 +450,11 @@ export default function ProductDetail({ product }: ProductDetailProps) {
             {/* === BOUTONS D'ACTION === */}
             {/* Produit/sélection épuisé(e) : les boutons d'achat en ligne
                 disparaissent complètement — seul « Commander via WhatsApp »
-                reste affiché, en vert et bien visible. */}
+                reste affiché, en vert et bien visible, sans encadré rouge
+                explicatif (retiré à la demande du propriétaire). */}
             <div className="flex flex-col gap-3 mb-8">
               {isEpuise ? (
                 <>
-                  <div className="border border-red-200 bg-red-50 px-4 py-4 text-center">
-                    <p className="text-xs tracking-[0.2em] uppercase text-red-700 font-semibold">
-                      {isProductEpuise ? 'Produit épuisé' : 'Cette taille est épuisée'}
-                    </p>
-                    <p className="text-xs text-[#6B6560] mt-2 leading-relaxed">
-                      La commande en ligne est désactivée pour éviter toute erreur.
-                      Commandez via WhatsApp : nous vous répondons rapidement
-                      (délais, réapprovisionnement, équivalences).
-                    </p>
-                  </div>
                   <button
                     onClick={handleWhatsAppOrder}
                     className="w-full py-4 bg-[#25D366] text-white text-xs tracking-[0.2em] uppercase hover:bg-[#1FB857] transition-colors flex items-center justify-center gap-3 shadow-lg shadow-[#25D366]/25"
@@ -529,22 +521,11 @@ export default function ProductDetail({ product }: ProductDetailProps) {
                     <MessageCircle className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={handleShareFacebook}
-                    aria-label="Partager sur Facebook"
+                    onClick={handleShareInstagram}
+                    aria-label="Découvrir notre Instagram"
                     className="w-10 h-10 flex items-center justify-center border border-[#E5E0DA] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/10 transition-all"
                   >
-                    <span className="text-xs font-bold">f</span>
-                  </button>
-                  <button
-                    onClick={handleCopyLink}
-                    aria-label="Copier le lien"
-                    className="w-10 h-10 flex items-center justify-center border border-[#E5E0DA] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/10 transition-all"
-                  >
-                    {copied ? (
-                      <Check className="w-4 h-4 text-green-700" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
+                    <Instagram className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setShowShareMenu(!showShareMenu)}
