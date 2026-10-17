@@ -10,9 +10,10 @@ import Link from 'next/link'
  * /payment-success ou /payment-failed, sans les modifier.
  */
 
-// ~5 min : laisse le temps à l'opérateur de répondre (le serveur conclut à l'échec après 4 min)
-const MAX_ATTEMPTS = 100
-const INTERVAL_MS = 3000
+// ~5 min : laisse le temps à KPrimePay de mettre à jour le statut après le paiement
+// carte (leur API peut refléter le succès avec quelques secondes de retard).
+const MAX_ATTEMPTS = 150
+const INTERVAL_MS = 2000
 // Délai après lequel le serveur conclut à l'échec (KPP_PUSH_TIMEOUT_MS dans src/lib/kprimepay.ts).
 // KPrimePay ne remonte jamais les refus de l'opérateur : seul le succès est signalé.
 const PUSH_TIMEOUT_S = 120
@@ -121,7 +122,7 @@ function RetourKPrimePay() {
     state === 'checking'
       ? isPush
         ? 'Une demande de paiement a été envoyée sur votre téléphone. Saisissez votre code secret Mobile Money pour valider. Cette page se met à jour automatiquement.'
-        : 'Nous confirmons votre paiement auprès de KPrimePay. Si une demande est arrivée sur votre téléphone, validez-la.'
+        : 'Vous venez de valider votre paiement sur la page sécurisée KPrimePay. Nous confirmons la transaction en direct — cette page se met à jour automatiquement, aucune action de votre part.'
       : state === 'timeout'
         ? "La confirmation prend plus de temps que prévu. Si vous avez validé le paiement, votre commande sera mise à jour automatiquement : consultez « Mon compte » dans quelques minutes."
         : state === 'review'
@@ -175,11 +176,20 @@ function RetourKPrimePay() {
         )}
 
         {state === 'checking' && !isPush && (
-          <div className="w-full bg-[#EDE8E1] rounded-full h-1.5 overflow-hidden">
-            <div
-              className="h-full bg-[#9C7C5C] rounded-full transition-all duration-1000"
-              style={{ width: `${Math.min(100, ((attempt + 1) / MAX_ATTEMPTS) * 100)}%` }}
-            />
+          <div className="space-y-4">
+            <div className="w-full bg-[#EDE8E1] rounded-full h-1.5 overflow-hidden">
+              <div
+                className="h-full bg-[#9C7C5C] rounded-full transition-all duration-1000"
+                style={{ width: `${Math.min(100, ((attempt + 1) / MAX_ATTEMPTS) * 100)}%` }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setRun((r) => r + 1)}
+              className="text-xs text-[#9C7C5C] underline underline-offset-4 hover:text-[#0A0A0A] transition-colors"
+            >
+              Vérifier maintenant
+            </button>
           </div>
         )}
 

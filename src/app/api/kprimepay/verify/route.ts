@@ -3,9 +3,10 @@ import { db } from '@/lib/db'
 import { KPP_PAYMENT_METHOD, syncKppPayment } from '@/lib/kprimepay'
 
 // KPrimePay limite à 120 requêtes/minute par clé. La page d'attente interroge cette route
-// toutes les 3 s : on ne relaie vers debit-status qu'au plus une fois toutes les 5 s par
-// transaction, et sinon on renvoie l'état de la base (mis à jour instantanément par le webhook).
-const MIN_REMOTE_INTERVAL_MS = 5000
+// toutes les 2 s : on ne relaie vers debit-status qu'au plus une fois toutes les 2,5 s par
+// transaction (~24 req/min, très en dessous de la limite), et sinon on renvoie l'état de la
+// base (mis à jour instantanément par le webhook).
+const MIN_REMOTE_INTERVAL_MS = 2500
 const lastRemoteCheck = new Map<string, number>()
 
 /**
