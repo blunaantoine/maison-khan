@@ -10,10 +10,13 @@ import Link from 'next/link'
  * /payment-success ou /payment-failed, sans les modifier.
  */
 
-// ~5 min : laisse le temps à KPrimePay de mettre à jour le statut après le paiement
-// carte (leur API peut refléter le succès avec quelques secondes de retard).
-const MAX_ATTEMPTS = 150
-const INTERVAL_MS = 2000
+// LONG-POLLING : le serveur garde chaque requête ouverte ~12 s et répond DÈS
+// que KPrimePay (ou le webhook) a tranché — la page se met à jour < 1 s après
+// la confirmation, sans attendre de tick. On veille ~5 min au total : laisse
+// le temps à KPrimePay de mettre à jour le statut après le paiement carte
+// (leur API peut refléter le succès avec quelques secondes de retard).
+const TOTAL_VERIFY_MS = 5 * 60 * 1000
+const RELONGPOLL_DELAY_MS = 300
 // Délai après lequel le serveur conclut à l'échec (KPP_PUSH_TIMEOUT_MS dans src/lib/kprimepay.ts).
 // KPrimePay ne remonte jamais les refus de l'opérateur : seul le succès est signalé.
 const PUSH_TIMEOUT_S = 120
@@ -27,7 +30,6 @@ function RetourKPrimePay() {
   const isPush = params.get('flow') === 'push'
   const [run, setRun] = useState(0)
 
-  const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<'checking' | 'timeout' | 'error' | 'review'>(orderId ? 'checking' : 'error')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [cancelling, setCancelling] = useState(false)
@@ -66,13 +68,14 @@ function RetourKPrimePay() {
   useEffect(() => {
     if (!orderId) return
     let cancelled = false
+    const roundStart = Date.now()
 
-    const check = async (n: number) => {
+    const check = async () => {
       if (cancelled) return
-      setAttempt(n)
       try {
-        const res = await fetch(`/api/kprimepay/verify?orderId=${encodeURIComponent(orderId)}`, { cache: 'no-store' })
+        const res = await fetch(`/api/kprimepay/verify?orderId=${encodeURIComponent(orderId)}&wait=1`, { cache: 'no-store' })
         const data = await res.json()
+        if (cancelled) return
         const status: string = data?.status
 
         if (status === 'completed') {
@@ -95,14 +98,15 @@ function RetourKPrimePay() {
         // on réessaie
       }
 
-      if (n + 1 < MAX_ATTEMPTS) {
-        timer.current = setTimeout(() => check(n + 1), INTERVAL_MS)
+      if (cancelled) return
+      if (Date.now() - roundStart < TOTAL_VERIFY_MS) {
+        timer.current = setTimeout(check, RELONGPOLL_DELAY_MS)
       } else {
         setState('timeout')
       }
     }
 
-    check(0)
+    check()
     return () => {
       cancelled = true
       if (timer.current) clearTimeout(timer.current)
@@ -180,7 +184,7 @@ function RetourKPrimePay() {
             <div className="w-full bg-[#EDE8E1] rounded-full h-1.5 overflow-hidden">
               <div
                 className="h-full bg-[#9C7C5C] rounded-full transition-all duration-1000"
-                style={{ width: `${Math.min(100, ((attempt + 1) / MAX_ATTEMPTS) * 100)}%` }}
+                style={{ width: `${Math.min(100, (elapsed / (TOTAL_VERIFY_MS / 1000)) * 100)}%` }}
               />
             </div>
             <button

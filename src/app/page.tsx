@@ -2626,7 +2626,12 @@ export default function Home() {
         {/* HOME SECTION */}
         <section className={`page-section ${currentSection === 'home' ? 'active' : ''}`} id="home">
           {/* Hero with Slider */}
-          <div className="relative min-h-screen flex items-center grain" style={{ background: 'linear-gradient(180deg, #F8F6F3 0%, #EDE8E1 100%)' }}>
+          {/* Lisibilité garantie : le texte est ancré en bas du hero, sur la
+              zone où le dégradé ramène la couleur crème de la boutique — il ne
+              se fond plus jamais dans l'image ou la vidéo du slide, quelle que
+              soit sa luminosité. Les médias restent pleinement visibles dans la
+              partie haute. */}
+          <div className="relative min-h-screen flex items-end grain" style={{ background: 'linear-gradient(180deg, #F8F6F3 0%, #EDE8E1 100%)' }}>
             {heroSlides.length > 0 && (
               <div className="absolute inset-0 overflow-hidden">
                 {heroSlides.map((slide, index) => (
@@ -2638,7 +2643,7 @@ export default function Home() {
                     ) : (
                       <img src={slide.image || 'https://placehold.co/1920x1080?text=Slide'} alt={slide.title || ''} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/1920x1080?text=Slide' }} />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#F8F6F3]/50 to-[#F8F6F3]"></div>
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent from-10% via-[#F8F6F3]/80 via-40% to-[#F8F6F3]"></div>
                   </div>
                 ))}
               </div>
@@ -2646,15 +2651,15 @@ export default function Home() {
 
             {heroSlides.length > 1 && (
               <>
-                <button className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors z-10" onClick={() => setCurrentSlide(prev => prev === 0 ? heroSlides.length - 1 : prev - 1)}>
+                <button className="absolute left-4 top-[26%] -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40 backdrop-blur-sm rounded-full flex items-center justify-center transition-colors z-10" onClick={() => setCurrentSlide(prev => prev === 0 ? heroSlides.length - 1 : prev - 1)}>
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
-                <button className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors z-10" onClick={() => setCurrentSlide(prev => (prev + 1) % heroSlides.length)}>
+                <button className="absolute right-4 top-[26%] -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40 backdrop-blur-sm rounded-full flex items-center justify-center transition-colors z-10" onClick={() => setCurrentSlide(prev => (prev + 1) % heroSlides.length)}>
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-10">
                   {heroSlides.map((slide, index) => (
-                    <button key={index} className={`w-3 h-3 rounded-full transition-all ${currentSlide === index ? 'bg-white scale-125' : 'bg-white/50'}`} onClick={() => setCurrentSlide(index)} />
+                    <button key={index} aria-label={`Aller au slide ${index + 1}`} className={`w-2.5 h-2.5 rounded-full transition-all ${currentSlide === index ? 'bg-[#0A0A0A] scale-125' : 'bg-[#0A0A0A]/25 hover:bg-[#0A0A0A]/40'}`} onClick={() => setCurrentSlide(index)} />
                   ))}
                 </div>
               </>
@@ -2666,29 +2671,29 @@ export default function Home() {
                 pour toute la visite. */}
             {heroSlides[currentSlide]?.type === 'video' && (
               <button
-                className="absolute bottom-8 right-6 w-11 h-11 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors z-10"
+                className="absolute bottom-6 right-6 w-11 h-11 bg-[#0A0A0A]/10 hover:bg-[#0A0A0A]/20 rounded-full flex items-center justify-center transition-colors z-10"
                 onClick={() => setVideoMuted(m => !m)}
                 aria-label={videoMuted ? 'Activer le son de la vidéo' : 'Couper le son de la vidéo'}
                 aria-pressed={!videoMuted}
                 title={videoMuted ? 'Activer le son' : 'Couper le son'}
               >
                 {videoMuted ? (
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><line x1="23" y1="9" x2="17" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /><line x1="17" y1="9" x2="23" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /></svg>
+                  <svg className="w-5 h-5 text-[#2C2C2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><line x1="23" y1="9" x2="17" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /><line x1="17" y1="9" x2="23" y2="15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} /></svg>
                 ) : (
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15.54 8.46a5 5 0 010 7.07" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19.07 4.93a10 10 0 010 14.14" /></svg>
+                  <svg className="w-5 h-5 text-[#2C2C2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5L6 9H2v6h4l5 4V5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15.54 8.46a5 5 0 010 7.07" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19.07 4.93a10 10 0 010 14.14" /></svg>
                 )}
               </button>
             )}
 
-            <div className="relative container mx-auto px-6 lg:px-12 pt-32 pb-20 z-10">
+            <div className="relative container mx-auto px-6 lg:px-12 pt-40 pb-20 lg:pb-24 z-10">
               {getContent('hero_title', '') || getContent('hero_title_highlight', '') || getContent('hero_description', '') ? (
                 <div className="max-w-5xl">
-                  <h1 className="hero-title font-display text-[#0A0A0A] mb-8 animate-on-scroll" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                  <h1 className="hero-title font-display text-[#0A0A0A] mb-6 animate-on-scroll" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
                     {getContent('hero_title', '') && <>{getContent('hero_title', '').split(' ').slice(0, 3).join(' ')}<br/></>}
                     <span className="font-light">{getContent('hero_title_highlight', '')}</span>
                   </h1>
                   {getContent('hero_description', '') && (
-                    <p className="inline-block text-lg lg:text-xl text-[#3E3A34] max-w-xl mb-12 font-light leading-relaxed animate-on-scroll bg-white/70 backdrop-blur-md rounded-2xl shadow-[0_10px_40px_rgba(10,10,10,0.12)] ring-1 ring-[#0A0A0A]/5 px-6 py-5 lg:px-8 lg:py-6">{getContent('hero_description', '')}</p>
+                    <p className="inline-block text-lg lg:text-xl text-[#3E3A34] max-w-xl mb-8 font-light leading-relaxed animate-on-scroll bg-white/80 backdrop-blur-md rounded-2xl shadow-[0_10px_40px_rgba(10,10,10,0.12)] ring-1 ring-[#0A0A0A]/5 px-6 py-5 lg:px-8 lg:py-6">{getContent('hero_description', '')}</p>
                   )}
                   <div className="flex flex-wrap gap-4 animate-on-scroll">
                     {getContent('hero_button_primary', '') && (

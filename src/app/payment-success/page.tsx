@@ -13,7 +13,7 @@ import Link from 'next/link'
  * chez PayDunya via /api/paydunya/verify) avant d'afficher « Paiement réussi ».
  *
  * États affichés :
- *  - checking      : vérification en cours (spinner + polling)
+ *  - checking      : vérification en cours (spinner + long-polling)
  *  - success       : paiement confirmé ✅
  *  - failed        : paiement refusé ❌ (+ bouton Réessayer)
  *  - cancelled     : paiement annulé (+ bouton Réessayer)
@@ -30,16 +30,14 @@ type ScreenState =
   | 'still_pending'
   | 'error'
 
-// Vérification adaptative : rapide juste après le paiement (le client vient
-// de valider, il attend une réponse), puis plus espacée (mobile money parfois
-// lent) au lieu d'abandonner après 25 s.
-const FAST_ATTEMPTS = 15 // 15 × 2 s = 30 s de vérification rapide
-const FAST_INTERVAL_MS = 2000
-const SLOW_INTERVAL_MS = 5000
-const MAX_ATTEMPTS = 51 // ≈ 3 min de vérification au total
-
-const delayForAttempt = (attempt: number) =>
-  attempt <= FAST_ATTEMPTS ? FAST_INTERVAL_MS : SLOW_INTERVAL_MS
+// LONG-POLLING : le serveur garde chaque requête ouverte ~12 s et répond DÈS
+// que le statut est confirmé (surveillance de la base/IPN en continu). Le
+// client relance une nouvelle veille aussitôt la réponse reçue — le résultat
+// s'affiche < 1 s après la confirmation du prestataire, sans attente de tick.
+// Au total, on veille ~3 min (mobile money parfois lent) avant « still_pending ».
+const TOTAL_VERIFY_MS = 3 * 60 * 1000
+const RELONGPOLL_DELAY_MS = 300
+const RETRY_AFTER_ERROR_MS = 1500
 
 function PaymentSuccessContent() {
   const searchParams = useSearchParams()
@@ -49,22 +47,27 @@ function PaymentSuccessContent() {
   const [verifyNonce, setVerifyNonce] = useState(0)
   const [retrying, setRetrying] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
-  const [attemptsDisplay, setAttemptsDisplay] = useState(0)
+  const [elapsedSec, setElapsedSec] = useState(0)
 
-  // ── Vérification du paiement (polling) ──
+  // ── Vérification du paiement (long-polling) ──
   useEffect(() => {
     if (!orderId) return
 
-    let attempts = 0
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
+    const startedAt = Date.now()
+
+    // Compteur de secondes affiché pendant l'attente
+    const tick = setInterval(
+      () => setElapsedSec(Math.floor((Date.now() - startedAt) / 1000)),
+      1000
+    )
 
     const checkPayment = async () => {
-      attempts++
-      setAttemptsDisplay(attempts)
+      if (cancelled) return
       try {
         const res = await fetch(
-          `/api/paydunya/verify?orderId=${encodeURIComponent(orderId)}`,
+          `/api/paydunya/verify?orderId=${encodeURIComponent(orderId)}&wait=1`,
           { cache: 'no-store' }
         )
         const data = await res.json()
@@ -83,16 +86,16 @@ function PaymentSuccessContent() {
           setState('failed')
           return
         }
-        // pending (ou réponse inattendue) → on continue de vérifier
-        if (attempts < MAX_ATTEMPTS) {
-          timer = setTimeout(checkPayment, delayForAttempt(attempts))
+        // pending (ou réponse inattendue) → nouvelle veille immédiate
+        if (Date.now() - startedAt < TOTAL_VERIFY_MS) {
+          timer = setTimeout(checkPayment, RELONGPOLL_DELAY_MS)
         } else {
           setState('still_pending')
         }
       } catch {
         if (cancelled) return
-        if (attempts < MAX_ATTEMPTS) {
-          timer = setTimeout(checkPayment, delayForAttempt(attempts))
+        if (Date.now() - startedAt < TOTAL_VERIFY_MS) {
+          timer = setTimeout(checkPayment, RETRY_AFTER_ERROR_MS)
         } else {
           setState('still_pending')
         }
@@ -103,6 +106,7 @@ function PaymentSuccessContent() {
 
     return () => {
       cancelled = true
+      clearInterval(tick)
       if (timer) clearTimeout(timer)
     }
   }, [orderId, verifyNonce])
@@ -172,7 +176,7 @@ function PaymentSuccessContent() {
                 Cela ne prend que quelques secondes, ne fermez pas cette page.
               </p>
               <p className="text-[#9C9A92] text-xs tabular-nums">
-                Vérifications automatiques en cours… ({attemptsDisplay})
+                Vérification en temps réel… ({elapsedSec} s)
               </p>
               {orderLabel && (
                 <p className="text-xs text-[#9C9A92] uppercase tracking-widest">

@@ -47,6 +47,8 @@ async function kppFetch(path: string, body: unknown, idempotencyKey?: string) {
     headers,
     body: JSON.stringify(body),
     cache: 'no-store',
+    // Jamais bloquer une page de retour client plus de 10 s sur l'API KPrimePay.
+    signal: AbortSignal.timeout(10000),
   })
 
   let json: any = null
