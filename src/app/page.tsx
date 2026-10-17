@@ -1908,6 +1908,31 @@ export default function Home() {
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0)
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0)
 
+  // Une sous-catégorie ne s'affiche (catalogue, méga-menu, menu mobile) que
+  // si au moins un produit actif la concerne — sinon son nom reste masqué
+  // (demande du propriétaire : pas de sous-catégorie vide, ex. Ballerines,
+  // Mocassins, Sandales). Correspondance identique à getFilteredProducts :
+  // nom exact ou slug, pour ne jamais masquer une catégorie qui a des articles.
+  const subHasProducts = (sub: { name: string; slug: string }, opts: { type?: string; genre?: string } = {}) => {
+    return products.some(p => {
+      if (!p.isActive) return false
+      if (opts.type && p.type !== opts.type) return false
+      if (p.subCategory !== sub.name && p.category !== sub.slug) return false
+      if (opts.genre && opts.genre !== 'all' && p.genre !== opts.genre && p.genre !== 'mixte') return false
+      return true
+    })
+  }
+
+  // Sous-catégories visibles dans les menus : genre compatible ET au moins
+  // un produit actif correspondant.
+  const visibleSubCategories = (cat: MenuCategory, genre: string) => {
+    const type = cat.slug === 'accessoires' ? 'accessoire' : 'chaussure'
+    return cat.subCategories.filter(sub =>
+      (sub.genre === genre || sub.genre === 'all' || (genre !== 'mixte' && sub.genre === 'mixte')) &&
+      subHasProducts(sub, { type, genre })
+    )
+  }
+
   // Filter products
   const getFilteredProducts = (filter: string, genre: string = currentGenre) => {
     let filtered = products.filter(p => p.isActive && p.type === 'chaussure')
@@ -2420,7 +2445,7 @@ export default function Home() {
                 <button className="nav-link text-xs font-medium tracking-widest uppercase text-[#0A0A0A]" onClick={() => { if (cat.slug === 'accessoires') navigateTo('accessoires'); else if (cat.slug === 'chaussures') navigateTo('catalogue') }}>
                   {cat.name}
                 </button>
-                {activeMegaMenu === cat.slug && cat.subCategories?.length > 0 && (
+                {activeMegaMenu === cat.slug && visibleSubCategories(cat, megaMenuGenre).length > 0 && (
                   <div className="absolute top-full left-1/2 -translate-x-1/2 pt-4 w-[800px]" onMouseEnter={() => handleMenuEnter(cat.slug)} onMouseLeave={handleMenuLeave}>
                     <div className="bg-[#F8F6F3] border border-[#E5E0DA] shadow-lg p-6">
                       <div className="flex gap-4 mb-4 border-b border-[#E5E0DA] pb-3">
@@ -2432,7 +2457,7 @@ export default function Home() {
                         <div className="flex-shrink-0 w-48">
                           <h4 className="text-xs uppercase tracking-widest text-[#6B6560] mb-4">Catégories</h4>
                           <div className="flex flex-col gap-1">
-                            {cat.subCategories.filter(sub => sub.genre === megaMenuGenre || sub.genre === 'all' || (megaMenuGenre !== 'mixte' && sub.genre === 'mixte')).map((sub) => (
+                            {visibleSubCategories(cat, megaMenuGenre).map((sub) => (
                               <button key={sub.id} className={`text-left py-2 px-4 transition-colors text-sm ${activeSubCategory === sub.id ? 'bg-[#0A0A0A] text-[#F8F6F3]' : 'hover:bg-[#EDE8E1] text-[#0A0A0A]'}`}
                                 onClick={() => { setActiveSubCategory(sub.id); setCurrentGenre(megaMenuGenre); navigateTo(cat.slug === 'accessoires' ? 'accessoires' : 'catalogue') }}
                                 onMouseEnter={() => setActiveSubCategory(sub.id)}>{sub.name}</button>
@@ -2440,7 +2465,7 @@ export default function Home() {
                           </div>
                         </div>
                         <div className="flex-1 flex gap-4">
-                          {cat.subCategories.filter(sub => sub.genre === megaMenuGenre || sub.genre === 'all' || (megaMenuGenre !== 'mixte' && sub.genre === 'mixte')).find(sub => sub.id === activeSubCategory)?.images?.slice(0, 3).map((img) => (
+                          {visibleSubCategories(cat, megaMenuGenre).find(sub => sub.id === activeSubCategory)?.images?.slice(0, 3).map((img) => (
                             <div key={img.id} className="relative flex-1 aspect-[3/4] overflow-hidden bg-[#EDE8E1]">
                               <img src={img.image || 'https://placehold.co/300x400?text=Image'} alt={img.title || ''} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x400?text=Image' }} />
                               {img.title && <div className="absolute bottom-0 left-0 right-0 bg-[#0A0A0A]/70 text-[#F8F6F3] p-2"><p className="text-xs">{img.title}</p></div>}
@@ -2561,7 +2586,7 @@ export default function Home() {
                       <button className={`flex-1 text-xs font-medium tracking-widest uppercase py-2 px-2 transition-colors ${mobileMenuGenre === 'mixte' ? 'bg-[#0A0A0A] text-[#F8F6F3]' : 'text-[#6B6560] hover:text-[#0A0A0A] border border-[#E5E0DA]'}`} onClick={() => setMobileMenuGenre('mixte')}>Mixte</button>
                     </div>
                     <button className="w-full text-left px-10 py-3 text-[#6B6560] text-sm hover:bg-[#EDE8E1] transition-colors" onClick={() => { setIsMenuOpen(false); setCurrentGenre(mobileMenuGenre); navigateTo(cat.slug === 'accessoires' ? 'accessoires' : 'catalogue') }}>Voir tout</button>
-                    {cat.subCategories.filter(sub => sub.genre === mobileMenuGenre || sub.genre === 'all' || (mobileMenuGenre !== 'mixte' && sub.genre === 'mixte')).map((sub) => (
+                    {visibleSubCategories(cat, mobileMenuGenre).map((sub) => (
                       <button key={sub.id} className="w-full text-left px-10 py-3 text-[#6B6560] text-sm hover:bg-[#EDE8E1] transition-colors" onClick={() => { setIsMenuOpen(false); setActiveSubCategory(sub.id); setCurrentGenre(mobileMenuGenre); navigateTo(cat.slug === 'accessoires' ? 'accessoires' : 'catalogue') }}>{sub.name}</button>
                     ))}
                   </div>
@@ -2771,7 +2796,7 @@ export default function Home() {
               </div>
               <div className="mb-8 animate-on-scroll">
                 <div className="flex flex-wrap gap-3">
-                  {menuCategories.find(cat => cat.slug === 'accessoires')?.subCategories.map((sub) => (
+                  {menuCategories.find(cat => cat.slug === 'accessoires')?.subCategories.filter(sub => subHasProducts(sub, { type: 'accessoire' })).map((sub) => (
                     <button key={sub.id} className={`px-5 py-2 text-sm font-medium tracking-widest uppercase transition-all ${currentFilter === sub.slug ? 'bg-[#9C7C5C] text-white' : 'bg-transparent text-[#0A0A0A] border border-[#E5E0DA] hover:border-[#9C7C5C] hover:text-[#9C7C5C]'}`} onClick={() => setCurrentFilter(sub.slug)}>{sub.name}</button>
                   ))}
                 </div>
@@ -2807,7 +2832,7 @@ export default function Home() {
                   <p className="text-xs uppercase tracking-widest text-[#6B6560] mb-3">Type de chaussure</p>
                   <div className="flex flex-wrap gap-3">
                     <button className={`px-5 py-2 text-sm font-medium tracking-widest uppercase transition-all ${currentFilter === 'all' ? 'bg-[#9C7C5C] text-white' : 'bg-transparent text-[#0A0A0A] border border-[#E5E0DA] hover:border-[#9C7C5C] hover:text-[#9C7C5C]'}`} onClick={() => setCurrentFilter('all')}>Toutes</button>
-                    {menuCategories.find(cat => cat.slug === 'chaussures')?.subCategories.filter(sub => currentGenre === 'all' || sub.genre === currentGenre || sub.genre === 'all').map((sub) => (
+                    {menuCategories.find(cat => cat.slug === 'chaussures')?.subCategories.filter(sub => (currentGenre === 'all' || sub.genre === currentGenre || sub.genre === 'all') && subHasProducts(sub, { type: 'chaussure', genre: currentGenre })).map((sub) => (
                       <button key={sub.id} className={`px-5 py-2 text-sm font-medium tracking-widest uppercase transition-all ${currentFilter === sub.slug ? 'bg-[#9C7C5C] text-white' : 'bg-transparent text-[#0A0A0A] border border-[#E5E0DA] hover:border-[#9C7C5C] hover:text-[#9C7C5C]'}`} onClick={() => setCurrentFilter(sub.slug)}>{sub.name}</button>
                     ))}
                   </div>
