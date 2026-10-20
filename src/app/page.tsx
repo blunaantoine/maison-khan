@@ -1085,6 +1085,10 @@ export default function Home() {
   const [showUserDashboard, setShowUserDashboard] = useState(false)
   const [dashboardTab, setDashboardTab] = useState<string>('orders')
   const [userOrders, setUserOrders] = useState<Order[]>([])
+  // Vérification de statut en cours (bouton « Vérifier le statut » du dashboard client)
+  const [verifyingOrderId, setVerifyingOrderId] = useState<string | null>(null)
+  // Commandes déjà auto-vérifiées lors de l'ouverture du dashboard (anti-boucle)
+  const autoVerifiedOrdersRef = useRef<Set<string>>(new Set())
   const [userAddresses, setUserAddresses] = useState<Address[]>([])
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -1293,6 +1297,22 @@ export default function Home() {
     }
   }
 
+  // Vérifie le statut d'une commande AUPRÈS DU PRESTATAIRE (KPrimePay ou PayDunya,
+  // selon la méthode de paiement) et met la base à jour. Renvoie le statut live
+  // ('completed', 'failed', 'pending'…) ou null si la vérification est impossible.
+  const verifyOrderStatus = async (orderId: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`/api/paydunya/verify?orderId=${orderId}`, { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        return data.status || null
+      }
+    } catch (error) {
+      console.error('Error verifying order status:', error)
+    }
+    return null
+  }
+
   // Fetch user addresses
   const fetchUserAddresses = async () => {
     if (!user) return
@@ -1309,10 +1329,27 @@ export default function Home() {
 
   useEffect(() => {
     if (showUserDashboard && user?.id) {
+      autoVerifiedOrdersRef.current.clear()
       fetchUserOrders()
       fetchUserAddresses()
     }
   }, [showUserDashboard, user?.id])
+
+  // Vérification automatique : dès que des commandes « en attente de paiement »
+  // arrivent dans le dashboard client, on interroge le prestataire (une seule
+  // fois par commande et par session d'ouverture — anti-boucle via le ref),
+  // puis on rafraîchit la liste. Un paiement validé dont le webhook aurait été
+  // manqué est ainsi rattrapé sans aucun clic.
+  useEffect(() => {
+    if (!showUserDashboard || !user?.id) return
+    const toVerify = userOrders.filter(o => o.status === 'pending' && !autoVerifiedOrdersRef.current.has(o.id))
+    if (toVerify.length === 0) return
+    toVerify.forEach(o => autoVerifiedOrdersRef.current.add(o.id))
+    ;(async () => {
+      await Promise.all(toVerify.map(o => verifyOrderStatus(o.id)))
+      await fetchUserOrders()
+    })()
+  }, [showUserDashboard, user?.id, userOrders])
 
   // État des notifications push (bouton du dashboard client)
   useEffect(() => {
@@ -3179,6 +3216,7 @@ export default function Home() {
                             tab.action()
                           } else {
                             setDashboardTab(tab.id)
+                            if (tab.id === 'orders') fetchUserOrders()
                           }
                         }}
                         className={`py-3 px-4 text-sm uppercase tracking-wider transition-colors ${
@@ -3341,23 +3379,29 @@ export default function Home() {
                                 )}
                                 <button
                                   onClick={async () => {
+                                    if (verifyingOrderId) return
+                                    setVerifyingOrderId(order.id)
                                     try {
-                                      const res = await fetch('/api/orders', {
-                                        credentials: 'include'
-                                      })
-                                      if (res.ok) {
-                                        const data = await res.json()
-                                        setUserOrders(data.orders || [])
-                                        showToast('Succès', 'Commandes actualisées')
+                                      const status = await verifyOrderStatus(order.id)
+                                      await fetchUserOrders()
+                                      if (status === 'completed') {
+                                        showToast('Paiement confirmé', 'Votre commande est validée. Merci !')
+                                      } else if (status === 'failed' || status === 'cancelled' || status === 'expired') {
+                                        showToast('Paiement non abouti', 'La commande a été mise à jour en conséquence.', 'error')
+                                      } else if (status === 'amount_mismatch') {
+                                        showToast('Montant incorrect', 'Le montant reçu ne correspond pas à la commande. Contactez-nous.', 'error')
+                                      } else {
+                                        showToast('Statut vérifié', 'Aucun paiement confirmé pour le moment — la commande reste en attente.')
                                       }
-                                    } catch {
-                                      showToast('Erreur', 'Impossible d\'actualiser', 'error')
+                                    } finally {
+                                      setVerifyingOrderId(null)
                                     }
                                   }}
-                                  className="flex-1 border border-[#9C7C5C] text-[#9C7C5C] py-3 px-4 text-sm uppercase tracking-wider hover:bg-[#9C7C5C]/10 transition-colors flex items-center justify-center gap-2"
+                                  disabled={verifyingOrderId === order.id}
+                                  className="flex-1 border border-[#9C7C5C] text-[#9C7C5C] py-3 px-4 text-sm uppercase tracking-wider hover:bg-[#9C7C5C]/10 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                                 >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                  Vérifier le statut
+                                  <svg className={'w-4 h-4' + (verifyingOrderId === order.id ? ' animate-spin' : '')} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                  {verifyingOrderId === order.id ? 'Vérification en cours…' : 'Vérifier le statut'}
                                 </button>
                                 {(order.status === 'payment_failed' || order.status === 'cancelled') && (
                                   <button
