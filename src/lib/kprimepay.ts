@@ -152,6 +152,16 @@ export function toLocalTogoNumber(input: string): string | null {
 // Garder synchronisé avec PUSH_TIMEOUT_S dans src/app/kprimepay/retour/page.tsx
 export const KPP_PUSH_TIMEOUT_MS = 2 * 60 * 1000
 
+/**
+ * Délai après lequel un checkout hébergé (carte bancaire) resté "pending" est
+ * considéré comme abandonné : le client n'a jamais finalisé le paiement.
+ * Sans cela, une commande peut rester "en attente" pendant des jours.
+ * Réversible : si KPrimePay confirme ensuite le paiement (réconciliation
+ * pendant RECONCILE_WINDOW_DAYS jours), la commande repasse automatiquement payée.
+ */
+export const KPP_CHECKOUT_STALE_MS =
+  Math.max(5, Number(process.env.KPRIMEPAY_CHECKOUT_STALE_MINUTES || 60)) * 60 * 1000
+
 export interface KppUssdPushInput {
   transactionId: string
   amount: number
@@ -205,7 +215,7 @@ export async function getKppDebitStatus(transactionId: string): Promise<KppDebit
 
   if (!ok || !json) {
     console.error(`[KPrimePay] debit-status ${transactionId} HTTP ${httpStatus}:`, JSON.stringify(json))
-    throw new Error(`debit-status indisponible (HTTP ${httpStatus})`)
+    throw Object.assign(new Error(`debit-status indisponible (HTTP ${httpStatus})`), { httpStatus })
   }
 
   // La réponse peut être enveloppée dans `data` ou non : on gère les deux.
@@ -263,19 +273,46 @@ export async function syncKppPayment(
   const isPush = Boolean(payment.phoneNumber)
   // cancelIfPending : le client a cliqué sur « Annuler » -> on conclut tout de suite
   // (sauf si KPrimePay confirme le paiement, auquel cas la commande est payée).
+  // Un paiement "pending" depuis trop longtemps est un abandon : USSD push après
+  // KPP_PUSH_TIMEOUT_MS, checkout hébergé (carte) après KPP_CHECKOUT_STALE_MS.
+  const age = Date.now() - payment.createdAt.getTime()
   const isStale =
-    Boolean(opts.cancelIfPending) || (isPush && Date.now() - payment.createdAt.getTime() > KPP_PUSH_TIMEOUT_MS)
+    Boolean(opts.cancelIfPending) ||
+    (isPush && age > KPP_PUSH_TIMEOUT_MS) ||
+    (!isPush && age > KPP_CHECKOUT_STALE_MS)
 
   let remote: KppDebitStatus
   try {
     remote = await getKppDebitStatus(transactionId)
   } catch (e) {
-    // API de statut injoignable ou en erreur : on ne bloque pas le client indéfiniment.
-    if (!isStale) throw e
+    // API de statut injoignable ou en erreur :
+    //  - USSD push au-delà du délai : on conclut à l'échec (réversible via reconcile) ;
+    //  - checkout hébergé : transaction inconnue de KPrimePay (HTTP 404, elle ne
+    //    sera jamais payée) -> échec ; tout autre erreur API -> on ne conclut
+    //    JAMAIS, le reconcile revérifiera dans ≤ 10 minutes.
+    const httpStatus = (e as { httpStatus?: number })?.httpStatus
+    if (!isStale || (!isPush && httpStatus !== 404)) throw e
     console.warn(`[KPrimePay] debit-status en erreur pour ${transactionId}, délai dépassé :`, e)
     remote = {
       status: 'pending', amount: null, kppReference: null, gateway: null,
       paymentReference: null, paymentDate: null, raw: { error: String(e) },
+    }
+    // 404 sur un checkout = transaction inconnue : message dédié (non ré-enregistré
+    // comme "délai dépassé", cette erreur n'est pas récupérable).
+    if (!isPush && httpStatus === 404) {
+      await db.payment.updateMany({
+        where: { id: payment.id, status: { notIn: ['completed', 'failed'] } },
+        data: {
+          status: 'failed',
+          errorMessage: 'Transaction introuvable chez KPrimePay (paiement non finalisé)',
+          metadata: JSON.stringify({ source, checkedAt: new Date().toISOString() }),
+        },
+      })
+      await db.order.updateMany({
+        where: { id: payment.orderId, paymentStatus: { not: 'paid' } },
+        data: { paymentStatus: 'failed', status: 'payment_failed' },
+      })
+      return 'failed'
     }
   }
 
@@ -291,7 +328,9 @@ export async function syncKppPayment(
             ? 'Paiement refusé ou non finalisé (KPrimePay)'
             : opts.cancelIfPending
               ? 'Annulé par le client (non validé sur le téléphone)'
-              : 'Délai de confirmation dépassé (aucune validation sur le téléphone)',
+              : isPush
+                ? 'Délai de confirmation dépassé (aucune validation sur le téléphone)'
+                : 'Délai de confirmation dépassé (paiement non finalisé sur la page de paiement)',
         metadata: JSON.stringify({ source, checkedAt: new Date().toISOString(), remote: remote.raw }),
       },
     })

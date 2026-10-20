@@ -7,6 +7,8 @@ import { KPP_PAYMENT_METHOD, syncKppPayment } from '@/lib/kprimepay'
 // dessous de la limite), et sinon on renvoie l'état de la base (mis à jour
 // instantanément par le webhook).
 const MIN_REMOTE_INTERVAL_MS = 2500
+// Dernière interrogation KPrimePay par transaction (limitation de débit)
+const lastRemoteCheck = new Map<string, number>()
 
 /**
  * LONG-POLLING — la page /kprimepay/retour ouvre UNE requête avec `wait=1` :

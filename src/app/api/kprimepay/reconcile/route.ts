@@ -8,15 +8,18 @@ import { KPP_PAYMENT_METHOD, syncKppPayment } from '@/lib/kprimepay'
  * Rattrapage en arrière-plan, à appeler toutes les 10 minutes (même mécanisme que
  * /api/cron/check-payments).
  *
- * KPrimePay ne signale jamais les refus de l'opérateur : après 2 minutes, le site
- * considère le paiement comme échoué. Cette route revérifie pendant 24 h toutes les
- * tentatives non confirmées, pour qu'un paiement validé tardivement ne soit jamais perdu :
- * s'il passe en "success", la commande est marquée payée et le stock décrémenté.
- * Elle clôt aussi les tentatives restées "pending" (client parti avant la fin du délai).
+ * KPrimePay ne signale jamais les refus de l'opérateur : après 2 minutes (USSD
+ * push) ou 60 minutes (checkout carte), le site considère le paiement comme
+ * échoué. Cette route revérifie pendant 7 jours (RECONCILE_WINDOW_DAYS) toutes
+ * les tentatives non confirmées, pour qu'un paiement validé tardivement ne soit
+ * jamais perdu : s'il passe en "success", la commande est marquée payée et le
+ * stock décrémenté. Elle clôt aussi les tentatives restées "pending"
+ * (client parti avant la fin du délai).
  */
 
 const CRON_SECRET = process.env.CRON_SECRET || ''
-const WINDOW_MS = 24 * 60 * 60 * 1000
+const WINDOW_MS =
+  Math.max(1, Number(process.env.RECONCILE_WINDOW_DAYS || 7)) * 24 * 60 * 60 * 1000
 const MAX_PER_RUN = 50
 const DELAY_BETWEEN_CALLS_MS = 600 // reste sous la limite KPrimePay (120 requêtes/min)
 
