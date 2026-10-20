@@ -1085,10 +1085,12 @@ export default function Home() {
   const [showUserDashboard, setShowUserDashboard] = useState(false)
   const [dashboardTab, setDashboardTab] = useState<string>('orders')
   const [userOrders, setUserOrders] = useState<Order[]>([])
+  // Dernier rafraîchissement de la liste des commandes (affiché dans l'onglet)
+  const [ordersUpdatedAt, setOrdersUpdatedAt] = useState<Date | null>(null)
   // Vérification de statut en cours (bouton « Vérifier le statut » du dashboard client)
   const [verifyingOrderId, setVerifyingOrderId] = useState<string | null>(null)
-  // Commandes déjà auto-vérifiées lors de l'ouverture du dashboard (anti-boucle)
-  const autoVerifiedOrdersRef = useRef<Set<string>>(new Set())
+  // Dernière auto-vérification prestataire par commande (throttle 2 min, anti-boucle)
+  const lastAutoVerifyRef = useRef<Map<string, number>>(new Map())
   const [userAddresses, setUserAddresses] = useState<Address[]>([])
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -1283,18 +1285,22 @@ export default function Home() {
     }
   }, [])
 
-  // Fetch user orders
-  const fetchUserOrders = async () => {
-    if (!user) return
+  // Fetch user orders — renvoie la liste (utilisée aussi par l'auto-refresh)
+  const fetchUserOrders = async (): Promise<Order[]> => {
+    if (!user) return []
     try {
       const res = await fetch('/api/orders', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
-        setUserOrders(data.orders || [])
+        const orders: Order[] = data.orders || []
+        setUserOrders(orders)
+        setOrdersUpdatedAt(new Date())
+        return orders
       }
     } catch (error) {
       console.error('Error fetching orders:', error)
     }
+    return []
   }
 
   // Vérifie le statut d'une commande AUPRÈS DU PRESTATAIRE (KPrimePay ou PayDunya,
@@ -1329,27 +1335,43 @@ export default function Home() {
 
   useEffect(() => {
     if (showUserDashboard && user?.id) {
-      autoVerifiedOrdersRef.current.clear()
-      fetchUserOrders()
       fetchUserAddresses()
     }
   }, [showUserDashboard, user?.id])
 
-  // Vérification automatique : dès que des commandes « en attente de paiement »
-  // arrivent dans le dashboard client, on interroge le prestataire (une seule
-  // fois par commande et par session d'ouverture — anti-boucle via le ref),
-  // puis on rafraîchit la liste. Un paiement validé dont le webhook aurait été
-  // manqué est ainsi rattrapé sans aucun clic.
+  // Miroir de la liste des commandes pour l'intervalle d'auto-refresh
+  // (évite de recréer l'intervalle à chaque changement de la liste)
+  const userOrdersRef = useRef<Order[]>([])
+  useEffect(() => { userOrdersRef.current = userOrders }, [userOrders])
+
+  // Rafraîchissement AUTOMATIQUE du dashboard client :
+  //  - la liste des commandes est rechargée toutes les 30 s tant que le
+  //    dashboard est ouvert (et seulement si la page est visible) ;
+  //  - les commandes encore « en attente de paiement » sont revérifiées auprès
+  //    du prestataire (KPrimePay/PayDunya) au plus une fois toutes les 2 min
+  //    par commande, puis la liste est rechargée.
+  // Le statut évolue ainsi tout seul — paiement confirmé → « Payée », abandon
+  // → « Échec » — sans recharger la page ni cliquer sur « Vérifier le statut ».
   useEffect(() => {
     if (!showUserDashboard || !user?.id) return
-    const toVerify = userOrders.filter(o => o.status === 'pending' && !autoVerifiedOrdersRef.current.has(o.id))
-    if (toVerify.length === 0) return
-    toVerify.forEach(o => autoVerifiedOrdersRef.current.add(o.id))
-    ;(async () => {
-      await Promise.all(toVerify.map(o => verifyOrderStatus(o.id)))
+
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
       await fetchUserOrders()
-    })()
-  }, [showUserDashboard, user?.id, userOrders])
+      const now = Date.now()
+      const stale = userOrdersRef.current.filter(
+        (o) => o.status === 'pending' && now - (lastAutoVerifyRef.current.get(o.id) ?? 0) >= 2 * 60 * 1000
+      )
+      if (stale.length === 0) return
+      stale.forEach((o) => lastAutoVerifyRef.current.set(o.id, now))
+      await Promise.all(stale.map((o) => verifyOrderStatus(o.id)))
+      await fetchUserOrders()
+    }
+
+    void tick() // contrôle immédiat à l'ouverture du dashboard
+    const interval = setInterval(tick, 30000)
+    return () => clearInterval(interval)
+  }, [showUserDashboard, user?.id])
 
   // État des notifications push (bouton du dashboard client)
   useEffect(() => {
@@ -1430,6 +1452,22 @@ export default function Home() {
       }
     }
   }, [currentSection, user?.role])
+
+  // Rafraîchissement AUTOMATIQUE des commandes admin : toutes les 30 s tant que
+  // l'onglet « Commandes » est affiché (et la page visible) — les nouvelles
+  // commandes et les paiements confirmés apparaissent sans recharger la page.
+  useEffect(() => {
+    if (currentSection !== 'admin' || adminTab !== 'orders') return
+    if (!(user?.role === 'admin' || user?.role === 'manager')) return
+
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      fetchAdminOrders()
+    }
+
+    const interval = setInterval(tick, 30000)
+    return () => clearInterval(interval)
+  }, [currentSection, adminTab, user?.role])
 
   // Update order status
   const updateOrderStatus = async (orderId: string, status: string, trackingNumber?: string) => {
@@ -3233,7 +3271,12 @@ export default function Home() {
                   {/* Orders Tab */}
                   {dashboardTab === 'orders' && (
                     <div className="space-y-4">
-                      <div className="flex justify-end mb-2">
+                      <div className="flex justify-end items-center gap-4 mb-2">
+                        {ordersUpdatedAt && (
+                          <span className="text-xs text-[#6B6560]" aria-live="polite">
+                            Actualisé à {ordersUpdatedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} — mise à jour automatique toutes les 30 s
+                          </span>
+                        )}
                         <button
                           onClick={fetchUserOrders}
                           className="text-[#9C7C5C] hover:text-[#8B6B4B] text-sm uppercase tracking-wider flex items-center gap-1"
