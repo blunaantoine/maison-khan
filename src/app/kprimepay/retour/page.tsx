@@ -20,8 +20,13 @@ const RELONGPOLL_DELAY_MS = 300
 // Délai après lequel le serveur conclut à l'échec (KPP_PUSH_TIMEOUT_MS dans src/lib/kprimepay.ts).
 // KPrimePay ne remonte jamais les refus de l'opérateur : seul le succès est signalé.
 const PUSH_TIMEOUT_S = 120
-// Le bouton « Je n'ai pas pu valider » apparaît après ce délai
+// Le bouton « Je n'ai pas pu valider » apparaît après ce délai (USSD push).
+// Pour le checkout carte, on attend un peu plus longtemps (voir cancelAfterS)
+// pour laisser à KPrimePay le temps de refléter un paiement qui viendrait
+// d'être validé, avant de proposer au client de conclure lui-même.
 const CANCEL_BUTTON_AFTER_S = 10
+// Checkout carte : le bouton « Je n'ai pas finalisé le paiement » après 30 s
+const CARD_CANCEL_BUTTON_AFTER_S = 30
 
 function RetourKPrimePay() {
   const router = useRouter()
@@ -43,6 +48,8 @@ function RetourKPrimePay() {
   }, [])
   const remaining = Math.max(0, PUSH_TIMEOUT_S - elapsed)
   const countdown = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+  // Délai d'apparition du bouton « je n'ai pas pu payer » selon le flux
+  const cancelAfterS = isPush ? CANCEL_BUTTON_AFTER_S : CARD_CANCEL_BUTTON_AFTER_S
 
   // Le client signale qu'il n'a pas pu valider : on conclut sans attendre le délai.
   const handleCancel = async () => {
@@ -197,11 +204,12 @@ function RetourKPrimePay() {
           </div>
         )}
 
-        {state === 'checking' && isPush && elapsed >= CANCEL_BUTTON_AFTER_S && (
+        {state === 'checking' && elapsed >= cancelAfterS && (
           <div className="space-y-3">
             <p className="text-xs text-[#9C9A92]">
-              Vous avez refusé, votre solde est insuffisant ou vous n&apos;avez reçu aucune demande ? Indiquez-le pour
-              réessayer tout de suite.
+              {isPush
+                ? 'Vous avez refusé, votre solde est insuffisant ou vous n&apos;avez reçu aucune demande ? Indiquez-le pour réessayer tout de suite.'
+                : 'Vous avez quitté la page sécurisée sans finaliser, ou votre paiement a été refusé ? Indiquez-le pour conclure et réessayer tout de suite.'}
             </p>
             <button
               type="button"
@@ -209,7 +217,7 @@ function RetourKPrimePay() {
               disabled={cancelling}
               className="block w-full py-3 border border-[#E5E0DA] text-[#6B6560] text-sm uppercase tracking-wider hover:border-[#9C7C5C] hover:text-[#9C7C5C] transition-colors disabled:opacity-60"
             >
-              {cancelling ? 'Vérification…' : "Je n'ai pas pu valider le paiement"}
+              {cancelling ? 'Vérification…' : isPush ? "Je n'ai pas pu valider le paiement" : "Je n'ai pas finalisé le paiement"}
             </button>
           </div>
         )}
