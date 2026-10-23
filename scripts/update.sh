@@ -188,9 +188,6 @@ if grep -q '^EMAILOQUI_API_KEY=moq_live_..*' .env 2>/dev/null; then
     echo "     URL: https://shop.maison-khan.com/api/webhooks/resend"
     echo "     Copiez le « signing secret » (whsec_…) dans .env puis : pm2 restart maison-khan"
   fi
-else
-  info "EMAILOQUI — pas encore configuré (suivi e-mail inactif ; ajoutez"
-  echo "     EMAILOQUI_API_KEY=moq_live_… dans .env pour l'activer)"
 fi
 
 CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://shop.maison-khan.com 2>/dev/null)
