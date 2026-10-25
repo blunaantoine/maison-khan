@@ -99,7 +99,7 @@ function shippingBlock(order: EmailOrder): string {
   const lines = [
     escapeHtml(name),
     escapeHtml(order.shippingAddress || ''),
-    [order.shippingCity, order.shippingCountry || 'Togo'].filter(Boolean).map(escapeHtml).join(', '),
+    [order.shippingCity, order.shippingCountry || 'Togo'].filter((s): s is string => Boolean(s)).map(escapeHtml).join(', '),
     escapeHtml(order.customerPhone),
   ].filter((l) => l && l.trim() !== '')
   return `
@@ -250,4 +250,39 @@ export function getStatusUpdateEmail(order: EmailOrder, newStatus: string): { su
     <p style="margin:16px 0 0;font-family:Georgia,serif;font-size:18px;color:#0A0A0A;">L'atelier MAISON KHAN</p>`
 
   return { subject: `${meta.title} — ${order.orderNumber}`, html: layout(body) }
+}
+
+/** Alerte interne paiement confirmé — envoyée aux admins / à l'adresse
+ * programmée (ADMIN_ALERT_EMAIL) à CHAQUE paiement validé.
+ * E-mail interne (pas pour le client) : résumé opérationnel de la commande. */
+export function getAdminPaymentAlertEmail(order: EmailOrder): { subject: string; html: string } {
+  const name = [order.customerFirstName, order.customerLastName].filter(Boolean).join(' ') || 'Client'
+  const body = `
+    <h1 style="margin:0 0 8px;font-family:Georgia,serif;font-size:24px;color:#15803D;">🔔 Paiement confirmé</h1>
+    <p style="margin:0;color:#6B6560;font-size:14px;line-height:1.6;">
+      Un paiement vient d'être <strong style="color:#15803D;">vérifié et validé</strong> sur la boutique.
+      La commande est prête à entrer en préparation.
+    </p>
+    <div style="background:#F0F7F1;border:1px solid #15803D;padding:14px 18px;margin:20px 0;">
+      <p style="margin:0;color:#15803D;font-size:15px;line-height:1.6;">
+        <strong>${escapeHtml(order.orderNumber)}</strong> — ${fmt(order.total)} reçus<br>
+        <span style="font-size:13px;">Confirmé le ${fmtDate()}</span>
+      </p>
+    </div>
+    <p style="margin:0 0 8px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9C7C5C;font-weight:600;">Client</p>
+    <p style="margin:0;color:#2C2C2A;font-size:14px;line-height:1.7;">
+      ${escapeHtml(name)}<br>
+      ☎ ${escapeHtml(order.customerPhone)} · ✉ ${escapeHtml(order.customerEmail)}
+    </p>
+    ${itemsTable(order.items)}
+    ${totalsTable(order)}
+    ${shippingBlock(order)}
+    <p style="margin:24px 0 0;color:#6B6560;font-size:13px;line-height:1.6;">
+      Traiter la commande depuis le panneau d'administration → Commandes.
+      Le client a reçu son reçu de paiement automatiquement.
+    </p>`
+  return {
+    subject: `🔔 Paiement confirmé — ${order.orderNumber} (${fmt(order.total)})`,
+    html: layout(body),
+  }
 }

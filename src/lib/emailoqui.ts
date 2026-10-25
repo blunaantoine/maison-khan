@@ -166,6 +166,7 @@ export const CAMPAIGN_LABELS: Record<string, string> = {
   status_update: 'Mise à jour de commande',
   password_reset: 'Réinitialisation mot de passe',
   order_confirmation: 'Reçu de commande',
+  admin_alert: 'Alerte paiement (admin)',
   test: 'Test intégration',
 }
 

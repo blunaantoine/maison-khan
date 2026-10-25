@@ -16,6 +16,7 @@ const AdminDashboard = dynamic(() => import('@/components/admin/AdminDashboard')
 const AdminOrdersTab = dynamic(() => import('@/components/admin/AdminOrdersTab').then(m => m.AdminOrdersTab), { ssr: false })
 const AdminUsersTab = dynamic(() => import('@/components/admin/AdminUsersTab').then(m => m.AdminUsersTab), { ssr: false })
 const AdminNotificationsTab = dynamic(() => import('@/components/admin/AdminNotificationsTab').then(m => m.AdminNotificationsTab), { ssr: false })
+const AdminEmailsTab = dynamic(() => import('@/components/admin/AdminEmailsTab').then(m => m.AdminEmailsTab), { ssr: false })
 const NotificationBell = dynamic(() => import('@/components/notifications/NotificationBell').then(m => m.NotificationBell), { ssr: false })
 const ClientNotificationsTab = dynamic(() => import('@/components/notifications/ClientNotificationsTab').then(m => m.ClientNotificationsTab), { ssr: false })
 const AtelierCarousel = dynamic(() => import('@/components/atelier/AtelierCarousel'), { ssr: false })
@@ -1011,7 +1012,7 @@ export default function Home() {
   const [formType, setFormType] = useState<'chaussure' | 'accessoire'>('chaussure')
   const [isLoading, setIsLoading] = useState(false)
   const [adminPassword, setAdminPassword] = useState('')
-  const [adminTab, setAdminTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'notifications' | 'settings'>('dashboard')
+  const [adminTab, setAdminTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'notifications' | 'emails' | 'settings'>('dashboard')
   const [notificationsUnread, setNotificationsUnread] = useState(0)
   const [dashboardStats, setDashboardStats] = useState<AdminDashboardStats | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
@@ -3728,12 +3729,13 @@ export default function Home() {
                   { id: 'products', label: 'Produits', roles: ['admin'] },
                   { id: 'orders', label: 'Commandes', roles: ['admin', 'manager'] },
                   { id: 'notifications', label: 'Notifications', roles: ['admin', 'manager'] },
+                  { id: 'emails', label: 'E-mails', roles: ['admin', 'manager'] },
                   { id: 'users', label: 'Utilisateurs', roles: ['admin'] }
                 ].filter(tab => tab.roles.includes(user?.role || '')).map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => {
-                      setAdminTab(tab.id as 'dashboard' | 'products' | 'orders' | 'users' | 'notifications')
+                      setAdminTab(tab.id as 'dashboard' | 'products' | 'orders' | 'users' | 'notifications' | 'emails')
                       if (tab.id === 'users') fetchAdminUsers()
                       if (tab.id === 'dashboard') fetchDashboardStats()
                     }}
@@ -3767,6 +3769,11 @@ export default function Home() {
               {/* Notifications Tab */}
               {adminTab === 'notifications' && (
                 <AdminNotificationsTab onUnreadChange={setNotificationsUnread} />
+              )}
+
+              {/* Emails Tab */}
+              {adminTab === 'emails' && (
+                <AdminEmailsTab />
               )}
 
               {/* Orders Tab */}

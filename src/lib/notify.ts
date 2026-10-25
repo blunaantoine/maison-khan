@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser, type PushPayload } from '@/lib/push'
 import {
+  getAdminPaymentAlertEmail,
   getPaymentReceiptEmail,
   getStatusUpdateEmail,
   type EmailOrder,
@@ -101,7 +102,9 @@ export async function createNotification(params: {
 // 'order_confirmation' n'existe plus : AUCUN email n'est envoyé avant le
 // paiement vérifié (le reçu de paiement est le premier email client).
 // Le label reste dans l'admin pour l'affichage des anciens logs.
-type EmailType = 'payment_receipt' | 'status_update'
+// 'admin_alert' : alerte interne paiement confirmé (destinataires = staff).
+// 'test' : e-mail de test envoyé depuis le panneau admin (onglet E-mails).
+type EmailType = 'payment_receipt' | 'status_update' | 'admin_alert' | 'test'
 
 /**
  * Envoie un email client + journalise le résultat dans EmailLog.
@@ -219,6 +222,59 @@ async function inAppToOrderOwner(
   })
 }
 
+// ──────────────────────────────────────────────
+// Alerte e-mail aux admins (paiement confirmé)
+// ──────────────────────────────────────────────
+
+/**
+ * Destinataires de l'alerte paiement :
+ *  1. Adresse(s) programmée(s) via ADMIN_ALERT_EMAIL (séparées par des virgules)
+ *  2. Tous les comptes actifs admin / manager (leur e-mail de connexion)
+ * Dédupliqués, minuscules. Peut être vide (aucun envoi, jamais bloquant).
+ */
+async function getAdminAlertRecipients(): Promise<string[]> {
+  const recipients = new Set<string>()
+
+  const configured = (process.env.ADMIN_ALERT_EMAIL || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.includes('@'))
+  for (const e of configured) recipients.add(e)
+
+  try {
+    const staff = await db.user.findMany({
+      where: { role: { in: ['admin', 'manager'] }, isActive: true },
+      select: { email: true },
+    })
+    for (const u of staff) {
+      if (u.email) recipients.add(u.email.toLowerCase())
+    }
+  } catch {
+    // DB indisponible : on garde au moins l'adresse programmée
+  }
+
+  return [...recipients]
+}
+
+/** Alerte e-mail « Paiement confirmé » au staff — une seule fois par commande. */
+async function sendAdminPaymentAlert(order: OrderWithItems): Promise<void> {
+  try {
+    if (await emailAlreadySent(order.id, 'admin_alert')) return
+    const recipients = await getAdminAlertRecipients()
+    if (recipients.length === 0) {
+      console.log('[notify:admin-alert] Aucun destinataire (ADMIN_ALERT_EMAIL absente, aucun admin avec e-mail)')
+      return
+    }
+    const template = getAdminPaymentAlertEmail(toEmailOrder(order))
+    for (const to of recipients) {
+      await sendClientEmail({ to, type: 'admin_alert', template, orderId: order.id })
+    }
+    console.log(`[notify:admin-alert] Alerte paiement envoyée à ${recipients.length} destinataire(s) pour ${order.orderNumber}`)
+  } catch (e) {
+    console.error('[notify:admin-alert] Alerte non envoyée :', e)
+  }
+}
+
 /** Paiement confirmé → notification admin + reçu de paiement au client (une seule fois). */
 export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<void> {
   const alreadySent = await emailAlreadySent(order.id, 'payment_receipt')
@@ -230,6 +286,8 @@ export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<voi
       message: `${order.orderNumber} — payée. Le reçu a déjà été envoyé au client.`,
       orderId: order.id,
     })
+    // Alerte staff : anti-doublon interne — sans effet si déjà envoyée.
+    await sendAdminPaymentAlert(order)
     return
   }
   const total = order.total.toLocaleString('fr-FR').replace(/\u202f/g, ' ')
@@ -258,6 +316,8 @@ export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<voi
     title: 'Paiement reçu ✓',
     body: `Votre paiement de ${order.total.toLocaleString('fr-FR').replace(/\u202f/g, ' ')} XOF pour la commande ${order.orderNumber} a été confirmé.`,
   })
+  // Alerte e-mail aux admins / adresse programmée (une seule fois par commande)
+  await sendAdminPaymentAlert(order)
 }
 
 /** Paiement échoué/annulé → notification admin (pas d'email au client : la page web l'informe déjà). */
