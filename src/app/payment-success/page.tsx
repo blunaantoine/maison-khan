@@ -200,7 +200,7 @@ function PaymentSuccessContent() {
             <div className="space-y-2">
               <h1 className="text-2xl font-medium text-[#2C2C2A]">Paiement réussi</h1>
               <p className="text-[#6B6560] text-sm">
-                Votre commande a bien été confirmée. Vous recevrez une confirmation par SMS.
+                Votre commande a bien été confirmée. Votre reçu de paiement vient d'être envoyé à votre adresse e-mail.
               </p>
               {orderLabel && (
                 <p className="text-xs text-[#9C9A92] uppercase tracking-widest">
@@ -320,7 +320,8 @@ function PaymentSuccessContent() {
               <p className="text-[#6B6560] text-sm">
                 Votre paiement n&apos;est pas encore confirmé. Les paiements mobile money
                 prennent parfois quelques minutes. Si vous avez validé le paiement,
-                votre commande sera confirmée automatiquement — vous recevrez un SMS.
+                votre commande sera confirmée automatiquement — votre reçu vous sera
+                envoyé par e-mail.
               </p>
               {orderLabel && (
                 <p className="text-xs text-[#9C9A92] uppercase tracking-widest">

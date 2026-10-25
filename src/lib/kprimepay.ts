@@ -1,7 +1,8 @@
 /**
  * Intégration KPrimePay (API v2) - MAISON KHAN
  *
- * Module autonome : il n'importe que `db` et ne touche à aucun code PayDunya/PayGate.
+ * Module autonome : il n'importe que `db` et le moteur de notifications
+ * (aucune dépendance au code PayDunya/PayGate).
  * Doc : https://developers.kprimepay.com/index?v=v2
  *
  * Principe de sécurité : les webhooks KPrimePay ne sont pas signés de façon documentée.
@@ -9,6 +10,7 @@
  * chaque changement de statut est revérifié auprès de l'API (/v2/transactions/debit-status).
  */
 import { db } from '@/lib/db'
+import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
 
 const KPP_BASE_URL = 'https://api.kprimepay.com/v2'
 
@@ -300,7 +302,7 @@ export async function syncKppPayment(
     // 404 sur un checkout = transaction inconnue : message dédié (non ré-enregistré
     // comme "délai dépassé", cette erreur n'est pas récupérable).
     if (!isPush && httpStatus === 404) {
-      await db.payment.updateMany({
+      const closed = await db.payment.updateMany({
         where: { id: payment.id, status: { notIn: ['completed', 'failed'] } },
         data: {
           status: 'failed',
@@ -312,6 +314,18 @@ export async function syncKppPayment(
         where: { id: payment.orderId, paymentStatus: { not: 'paid' } },
         data: { paymentStatus: 'failed', status: 'payment_failed' },
       })
+      // Notification admin une seule fois (le cron/verify repassera souvent ici)
+      if (closed.count > 0) {
+        try {
+          const order = await db.order.findUnique({
+            where: { id: payment.orderId },
+            include: { items: true },
+          })
+          if (order) await notifyPaymentFailed(order, 'failed')
+        } catch (e) {
+          console.error('[KPrimePay] Notification échec non envoyée :', e)
+        }
+      }
       return 'failed'
     }
   }
@@ -319,7 +333,7 @@ export async function syncKppPayment(
   if (remote.status === 'pending' && !isStale) return 'pending'
 
   if (remote.status === 'failed' || remote.status === 'pending') {
-    await db.payment.updateMany({
+    const closed = await db.payment.updateMany({
       where: { id: payment.id, status: { notIn: ['completed', 'failed'] } },
       data: {
         status: 'failed',
@@ -339,6 +353,20 @@ export async function syncKppPayment(
       where: { id: payment.orderId, paymentStatus: { not: 'paid' } },
       data: { paymentStatus: 'failed', status: 'payment_failed' },
     })
+    // Notification admin une seule fois (le cron/verify repassera souvent ici)
+    if (closed.count > 0) {
+      try {
+        const order = await db.order.findUnique({
+          where: { id: payment.orderId },
+          include: { items: true },
+        })
+        if (order) {
+          await notifyPaymentFailed(order, opts.cancelIfPending ? 'cancelled' : 'failed')
+        }
+      } catch (e) {
+        console.error('[KPrimePay] Notification échec non envoyée :', e)
+      }
+    }
     return 'failed'
   }
 
@@ -409,6 +437,20 @@ export async function syncKppPayment(
 
   if (!alreadyDone) {
     console.log(`[KPrimePay] Commande ${payment.order.orderNumber} payée (${transactionId}, via ${source})`)
+    // Reçu de paiement client (e-mail Resend) + notification in-app + push web +
+    // notification admin — même comportement que PayDunya/PayGate.
+    // Anti-doublon interne via EmailLog (emailAlreadySent) : sans risque si un
+    // autre chemin (webhook, verify, reconcile) confirme le paiement en même temps.
+    try {
+      const paidOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (paidOrder) await notifyPaymentConfirmed(paidOrder)
+    } catch (e) {
+      // Jamais bloquant : le paiement est déjà confirmé côté boutique.
+      console.error('[KPrimePay] Reçu/notifications post-paiement non envoyés :', e)
+    }
   }
   return 'completed'
 }
