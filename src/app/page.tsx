@@ -1082,8 +1082,12 @@ export default function Home() {
   const [aiAnalyzing, setAiAnalyzing] = useState(false)
 
   // Dashboard State
-  const [showUserDashboard, setShowUserDashboard] = useState(false)
+  // NB : le dashboard client est rendu via currentSection === 'account' —
+  // l'ancien état showUserDashboard (jamais passé à true) a été supprimé :
+  // il bloquait le chargement automatique des commandes à l'ouverture.
   const [dashboardTab, setDashboardTab] = useState<string>('orders')
+  // Chargement de la liste des commandes client (évite le flash « Aucune commande »)
+  const [ordersLoading, setOrdersLoading] = useState(false)
   const [userOrders, setUserOrders] = useState<Order[]>([])
   // Dernier rafraîchissement de la liste des commandes (affiché dans l'onglet)
   const [ordersUpdatedAt, setOrdersUpdatedAt] = useState<Date | null>(null)
@@ -1219,7 +1223,6 @@ export default function Home() {
       // ignore - cookie will be cleared server-side anyway on next request
     }
     setUser(null)
-    setShowUserDashboard(false)
     if (currentSection === 'admin' || currentSection === 'account') {
       setCurrentSection('home')
     }
@@ -1288,6 +1291,7 @@ export default function Home() {
   // Fetch user orders — renvoie la liste (utilisée aussi par l'auto-refresh)
   const fetchUserOrders = async (): Promise<Order[]> => {
     if (!user) return []
+    setOrdersLoading(true)
     try {
       const res = await fetch('/api/orders', { credentials: 'include' })
       if (res.ok) {
@@ -1299,6 +1303,8 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error fetching orders:', error)
+    } finally {
+      setOrdersLoading(false)
     }
     return []
   }
@@ -1333,27 +1339,29 @@ export default function Home() {
     }
   }
 
+  // Ouverture de « Mon Compte » : chargement immédiat des adresses
   useEffect(() => {
-    if (showUserDashboard && user?.id) {
+    if (currentSection === 'account' && user?.id) {
       fetchUserAddresses()
     }
-  }, [showUserDashboard, user?.id])
+  }, [currentSection, user?.id])
 
   // Miroir de la liste des commandes pour l'intervalle d'auto-refresh
   // (évite de recréer l'intervalle à chaque changement de la liste)
   const userOrdersRef = useRef<Order[]>([])
   useEffect(() => { userOrdersRef.current = userOrders }, [userOrders])
 
-  // Rafraîchissement AUTOMATIQUE du dashboard client :
-  //  - la liste des commandes est rechargée toutes les 30 s tant que le
-  //    dashboard est ouvert (et seulement si la page est visible) ;
+  // Rafraîchissement AUTOMATIQUE du dashboard client (déclenché dès que la
+  // section « Mon Compte » est ouverte) :
+  //  - la liste des commandes est rechargée toutes les 30 s tant que la
+  //    section est affichée (et seulement si la page est visible) ;
   //  - les commandes encore « en attente de paiement » sont revérifiées auprès
   //    du prestataire (KPrimePay/PayDunya) au plus une fois toutes les 2 min
   //    par commande, puis la liste est rechargée.
   // Le statut évolue ainsi tout seul — paiement confirmé → « Payée », abandon
   // → « Échec » — sans recharger la page ni cliquer sur « Vérifier le statut ».
   useEffect(() => {
-    if (!showUserDashboard || !user?.id) return
+    if (currentSection !== 'account' || !user?.id) return
 
     const tick = async () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
@@ -1368,17 +1376,17 @@ export default function Home() {
       await fetchUserOrders()
     }
 
-    void tick() // contrôle immédiat à l'ouverture du dashboard
+    void tick() // contrôle immédiat à l'ouverture de « Mon Compte »
     const interval = setInterval(tick, 30000)
     return () => clearInterval(interval)
-  }, [showUserDashboard, user?.id])
+  }, [currentSection, user?.id])
 
   // État des notifications push (bouton du dashboard client)
   useEffect(() => {
-    if (showUserDashboard && user?.id) {
+    if (currentSection === 'account' && user?.id) {
       checkPushState().then(setPushState).catch(() => setPushState('inactive'))
     }
-  }, [showUserDashboard, user?.id])
+  }, [currentSection, user?.id])
 
   // Activer / désactiver les notifications push sur CET appareil
   const handleToggleNotifications = async () => {
@@ -3285,7 +3293,11 @@ export default function Home() {
                           Actualiser
                         </button>
                       </div>
-                      {userOrders.length === 0 ? (
+                      {ordersLoading && userOrders.length === 0 ? (
+                        <div className="text-center py-12 bg-[#EDE8E1]">
+                          <p className="text-[#6B6560]">Chargement de vos commandes…</p>
+                        </div>
+                      ) : userOrders.length === 0 ? (
                         <div className="text-center py-12 bg-[#EDE8E1]">
                           <p className="text-[#6B6560]">Aucune commande pour le moment</p>
                           <button
