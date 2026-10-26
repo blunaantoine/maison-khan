@@ -52,8 +52,8 @@ function itemsTable(items: EmailOrderItem[]): string {
         <tr>
           <td style="padding:10px 0;border-bottom:1px solid #EDE8E1;color:#2C2C2A;font-size:14px;">
             ${escapeHtml(i.productName)}
-            ${(i.size || i.colorName) ? `<div style="color:#9C9A92;font-size:12px;margin-top:2px;">${[
-              i.size ? `Taille ${escapeHtml(i.size)}` : '',
+            ${(i.size || i.colorName) ? `<div style="color:#6B6560;font-size:13px;margin-top:3px;">${[
+              i.size ? `<strong style="color:#2C2C2A;">Pointure ${escapeHtml(i.size)}</strong>` : '',
               i.colorName ? escapeHtml(i.colorName) : '',
             ].filter(Boolean).join(' · ')}</div>` : ''}
           </td>
