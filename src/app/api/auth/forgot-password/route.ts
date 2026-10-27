@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { sendEmail, getPasswordResetEmail } from '@/lib/email'
 import { trackEmailEvent, campaignLabel } from '@/lib/emailoqui'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
-import { signResetToken } from '@/lib/auth'
+import { signResetToken } from '@/lib/reset-token'
 
 const GENERIC_RESPONSE = {
   message: 'Si cet email existe, un lien de réinitialisation vient de lui être envoyé',

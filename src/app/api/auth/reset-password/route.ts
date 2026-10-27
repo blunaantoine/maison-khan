@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
-import { verifyResetToken, passwordFingerprint } from '@/lib/auth'
+import { verifyResetToken, passwordFingerprint } from '@/lib/reset-token'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
 /** POST /api/auth/reset-password { token, password } — consomme le lien reçu par e-mail. */

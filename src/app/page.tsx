@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, memo, forwardRef, useImperativeHandle, useSyncExternalStore } from 'react'
 import { safeNavigate } from '@/lib/safe-redirect'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'

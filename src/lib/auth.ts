@@ -1,6 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { NextRequest, NextResponse } from 'next/server'
-import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 
 /**
@@ -19,7 +18,12 @@ const COOKIE_NAME = 'mk_session'
 const SESSION_DURATION = '24h'
 const COOKIE_MAX_AGE_SECONDS = 24 * 60 * 60 // 24h
 
-function getSecret(): Uint8Array {
+// Exporté pour src/lib/reset-token.ts (Jetons de réinitialisation).
+// NB : ce fichier est AUSSI importé par le middleware (Edge Runtime) — il ne
+// doit donc JAMAIS importer de modules Node (crypto, fs, prisma…) qui
+// feraient échouer le build Edge. Le contexte DB n'est utilisé que depuis
+// les routes API (Node runtime).
+export function getSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET
   if (!secret || secret.length < 32) {
     // Jamais de secret par défaut en production : un secret public permettrait
@@ -126,7 +130,6 @@ export function buildClearSessionCookie(): string {
 }
 
 export const SESSION_COOKIE_NAME = COOKIE_NAME
-
 /**
  * Get the authenticated user from a NextRequest, validating against the DB.
  * Returns null if not authenticated or if the user has been deactivated.
@@ -208,36 +211,4 @@ export async function requireRole(
     }
   }
   return { user, response: null }
-}
-
-
-/**
- * Jeton de réinitialisation de mot de passe (sans stockage en base).
- * - signé HS256, durée de vie 30 min, usage distinct de la session (`purpose`)
- * - lié à l'empreinte du mot de passe actuel (`ph`) : dès que le mot de passe
- *   change, le lien devient invalide → usage unique.
- */
-export function passwordFingerprint(passwordHash: string): string {
-  return createHash('sha256').update(passwordHash).digest('hex').slice(0, 24)
-}
-
-export async function signResetToken(user: { id: string; password: string }): Promise<string> {
-  return new SignJWT({ purpose: 'pwreset', ph: passwordFingerprint(user.password) })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(user.id)
-    .setIssuedAt()
-    .setExpirationTime('30m')
-    .sign(getSecret())
-}
-
-export async function verifyResetToken(
-  token: string
-): Promise<{ userId: string; ph: string } | null> {
-  try {
-    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] })
-    if (payload.purpose !== 'pwreset' || !payload.sub || typeof payload.ph !== 'string') return null
-    return { userId: payload.sub, ph: payload.ph }
-  } catch {
-    return null
-  }
 }
