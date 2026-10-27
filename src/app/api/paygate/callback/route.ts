@@ -123,10 +123,6 @@ export async function POST(request: NextRequest) {
         data: { paymentStatus: 'paid', status: 'paid' }
       })
       console.log(`[PayGate Callback] Commande ${payment.order.orderNumber} marquée PAYÉE`)
-      console.log(`  Référence: ${payment_reference}`)
-      console.log(`  Montant: ${amount} FCFA`)
-      console.log(`  Téléphone: ${phone_number}`)
-      console.log(`  Méthode: ${payment_method}`)
 
       // Notification admin + reçu de paiement par email au client
       const paidOrder = await db.order.findUnique({

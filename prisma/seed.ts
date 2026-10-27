@@ -13,9 +13,9 @@ async function main() {
 
   // ⚠️ SÉCURITÉ : les mots de passe sont passés par variables d'environnement
   // (SEED_ADMIN_PASSWORD / SEED_MANAGER_PASSWORD) pour ne jamais être committés.
-  const adminPasswordPlain = process.env.SEED_ADMIN_PASSWORD || 'ChangeMe-Admin-2024!'
-  if (!process.env.SEED_ADMIN_PASSWORD) {
-    console.warn('  ⚠️  SEED_ADMIN_PASSWORD non défini — mot de passe par défaut utilisé (À CHANGER ABSOLUMENT)')
+  const adminPasswordPlain = process.env.SEED_ADMIN_PASSWORD || ''
+  if (adminPasswordPlain.length < 12) {
+    throw new Error('SEED_ADMIN_PASSWORD requis (12 caractères minimum) — aucun mot de passe par défaut')
   }
   const adminPassword = await bcrypt.hash(adminPasswordPlain, 10)
   const admin = await prisma.user.upsert({
@@ -36,9 +36,9 @@ async function main() {
   })
   console.log(`  ✅ Admin: ${admin.email}`)
 
-  const managerPasswordPlain = process.env.SEED_MANAGER_PASSWORD || 'ChangeMe-Manager-2024!'
-  if (!process.env.SEED_MANAGER_PASSWORD) {
-    console.warn('  ⚠️  SEED_MANAGER_PASSWORD non défini — mot de passe par défaut utilisé (À CHANGER ABSOLUMENT)')
+  const managerPasswordPlain = process.env.SEED_MANAGER_PASSWORD || ''
+  if (managerPasswordPlain.length < 12) {
+    throw new Error('SEED_MANAGER_PASSWORD requis (12 caractères minimum) — aucun mot de passe par défaut')
   }
   const managerPassword = await bcrypt.hash(managerPasswordPlain, 10)
   const manager = await prisma.user.upsert({

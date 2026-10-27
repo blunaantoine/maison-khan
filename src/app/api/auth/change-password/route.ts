@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { getAuthUser } from '@/lib/auth'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { currentPassword, newPassword, userId } = body
+    // L'identité vient UNIQUEMENT de la session (cookie signé) — l'ancien code
+    // acceptait un userId dans le corps de la requête, donc n'importe qui
+    // pouvait tester le « mot de passe actuel » de n'importe quel compte.
+    const authUser = await getAuthUser(request)
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+    }
+    const userId = authUser.id
 
-    if (!userId) {
+    const limit = rateLimit(`chgpwd:${userId}`, 5, 15 * 60 * 1000)
+    if (!limit.allowed) {
       return NextResponse.json(
-        { error: 'Non autorisé' },
-        { status: 401 }
+        { error: 'Trop de tentatives. Réessayez plus tard.' },
+        { status: 429 }
       )
+    }
+
+    const body = await request.json()
+    const { currentPassword, newPassword } = body
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+      return NextResponse.json({ error: 'Requête invalide' }, { status: 400 })
     }
 
     if (!currentPassword || !newPassword) {
@@ -21,9 +36,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8 || newPassword.length > 128) {
       return NextResponse.json(
-        { error: 'Le mot de passe doit contenir au moins 6 caractères' },
+        { error: 'Le mot de passe doit contenir au moins 8 caractères' },
         { status: 400 }
       )
     }
@@ -50,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10)
+    const hashedPassword = await bcrypt.hash(newPassword, 12)
 
     // Update password
     await db.user.update({

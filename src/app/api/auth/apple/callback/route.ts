@@ -130,6 +130,12 @@ async function handleCallback(request: NextRequest) {
     //       (Apple a vérifié cet email, il appartient donc à cette personne)
     if (!user && email) {
       user = await db.user.findUnique({ where: { email } })
+      // Rattachement uniquement si Apple certifie l'e-mail, et jamais pour un
+      // compte admin/manager (connexion par mot de passe uniquement).
+      if (user && (payload.email_verified !== true || user.role !== 'customer')) {
+        console.error('[APPLE-AUTH] Rattachement refusé (e-mail non vérifié ou compte privilégié)')
+        return redirectError(siteBaseUrl)
+      }
       if (user) {
         user = await db.user.update({
           where: { id: user.id },

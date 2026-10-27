@@ -14,8 +14,14 @@ import { syncKppPayment } from '@/lib/kprimepay'
 
 function isAuthorized(req: NextRequest): boolean {
   const expected = process.env.KPRIMEPAY_WEBHOOK_SECRET
-  if (!expected) return true // secret optionnel : la revérification API reste la vraie protection
-  const given = req.nextUrl.searchParams.get('key') || ''
+  if (!expected) {
+    // Production : secret obligatoire (fail-closed). En développement seulement,
+    // on accepte sans secret — le statut est de toute façon revérifié via l'API.
+    return process.env.NODE_ENV !== 'production'
+  }
+  // En-tête préféré (n'apparaît pas dans les logs d'accès) ; ?key= toléré car
+  // le tableau de bord KPrimePay ne permet de configurer qu'une URL.
+  const given = req.headers.get('x-webhook-secret') || req.nextUrl.searchParams.get('key') || ''
   const a = Buffer.from(given)
   const b = Buffer.from(expected)
   return a.length === b.length && timingSafeEqual(a, b)

@@ -377,9 +377,9 @@ export async function POST(request: NextRequest) {
       order
     })
   } catch (error) {
-    console.error('Erreur complète:', error)
+    console.error('Create order error:', error instanceof Error ? error.message : 'unknown')
     return NextResponse.json(
-      { error: 'Erreur lors de la création de la commande', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Erreur lors de la création de la commande' },
       { status: 500 }
     )
   }

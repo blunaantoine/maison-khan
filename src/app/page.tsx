@@ -1203,8 +1203,8 @@ export default function Home() {
       showToast('Erreur', 'Les mots de passe ne correspondent pas', 'error')
       return
     }
-    if (passwordForm.newPassword.length < 6) {
-      showToast('Erreur', 'Le mot de passe doit contenir au moins 6 caractères', 'error')
+    if (passwordForm.newPassword.length < 8) {
+      showToast('Erreur', 'Le mot de passe doit contenir au moins 8 caractères', 'error')
       return
     }
 

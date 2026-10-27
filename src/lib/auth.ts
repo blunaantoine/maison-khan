@@ -212,3 +212,20 @@ export async function requireRole(
   }
   return { user, response: null }
 }
+
+/**
+ * Contrôle d'accès à une commande (anti-IDOR) pour les routes de paiement :
+ *  - commande rattachée à un compte → seul ce client (ou le staff) y accède ;
+ *  - commande invité (sans compte) → accès par identifiant (cuid non devinable),
+ *    seul moyen de reprendre un paiement sans compte.
+ */
+export async function canAccessOrder(
+  req: NextRequest,
+  order: { userId: string | null }
+): Promise<boolean> {
+  if (!order.userId) return true
+  const user = await getAuthUser(req)
+  if (!user) return false
+  return user.id === order.userId || user.role === 'admin' || user.role === 'manager'
+}
+

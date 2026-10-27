@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { canAccessOrder } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { KPP_PAYMENT_METHOD, syncKppPayment } from '@/lib/kprimepay'
 
@@ -26,6 +27,10 @@ export async function POST(req: NextRequest) {
     })
     if (!payment?.transactionId) {
       return NextResponse.json({ success: false, error: 'Paiement introuvable' }, { status: 404 })
+    }
+    const owner = await db.order.findUnique({ where: { id: orderId }, select: { userId: true } })
+    if (!owner || !(await canAccessOrder(req, owner))) {
+      return NextResponse.json({ success: false, error: 'Accès refusé à cette commande' }, { status: 403 })
     }
     if (payment.status === 'completed') {
       return NextResponse.json({ success: true, status: 'completed' })

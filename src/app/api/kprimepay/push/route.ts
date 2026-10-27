@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { canAccessOrder } from '@/lib/auth'
 import { db } from '@/lib/db'
 import {
   createKppUssdPush,
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest) {
     const order = await db.order.findUnique({ where: { id: orderId } })
     if (!order) {
       return NextResponse.json({ success: false, error: 'Commande introuvable' }, { status: 404 })
+    }
+    if (!(await canAccessOrder(req, order))) {
+      return NextResponse.json({ success: false, error: 'Accès refusé à cette commande' }, { status: 403 })
     }
     if (order.paymentStatus === 'paid') {
       return NextResponse.json({ success: false, error: 'Commande déjà payée' }, { status: 400 })

@@ -22,11 +22,33 @@ function isValidSubscription(body: unknown): body is PushSubscriptionBody {
   const b = body as Record<string, unknown>
   return (
     typeof b.endpoint === 'string' &&
-    b.endpoint.startsWith('https://') &&
+    isAllowedPushEndpoint(b.endpoint) &&
     typeof b.keys === 'object' && b.keys !== null &&
     typeof (b.keys as Record<string, unknown>).p256dh === 'string' &&
     typeof (b.keys as Record<string, unknown>).auth === 'string'
   )
+}
+
+/**
+ * Anti-SSRF : le serveur enverra des requêtes à cette URL. On n'accepte que
+ * les services Web Push officiels des navigateurs (Chrome/Edge, Firefox, Safari, Windows).
+ */
+const PUSH_HOST_SUFFIXES = [
+  'fcm.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'push.apple.com',
+  'notify.windows.com',
+  'push.services.mozilla.com',
+]
+function isAllowedPushEndpoint(endpoint: unknown): boolean {
+  if (typeof endpoint !== 'string' || endpoint.length > 2048) return false
+  try {
+    const u = new URL(endpoint)
+    if (u.protocol !== 'https:' || u.port || u.username || u.password) return false
+    return PUSH_HOST_SUFFIXES.some((s) => u.hostname === s || u.hostname.endsWith('.' + s))
+  } catch {
+    return false
+  }
 }
 
 // GET — État des abonnements de l'utilisateur connecté

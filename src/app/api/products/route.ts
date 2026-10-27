@@ -11,9 +11,13 @@ async function authorizeAdmin(request: NextRequest) {
 }
 
 // GET - Fetch all products with colors
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Les produits désactivés (brouillons) ne sont visibles que du staff
+    const viewer = await getAuthUser(request)
+    const isStaff = Boolean(viewer && (viewer.role === 'admin' || viewer.role === 'manager'))
     const products = await db.product.findMany({
+      where: isStaff ? {} : { isActive: true },
       orderBy: { createdAt: 'desc' },
       include: {
         colors: {

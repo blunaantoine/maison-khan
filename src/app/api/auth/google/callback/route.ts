@@ -117,6 +117,13 @@ export async function GET(request: NextRequest) {
     //    si l'email correspond à un compte existant, il appartient à cette personne)
     let user = await db.user.findUnique({ where: { email } })
 
+    // Un compte admin/manager ne se connecte JAMAIS par rattachement d'e-mail
+    // OAuth (défense contre la prise de contrôle d'un compte privilégié).
+    if (user && user.role !== 'customer') {
+      console.error('[GOOGLE-AUTH] Compte privilégié : connexion par mot de passe uniquement')
+      return redirectError(siteBaseUrl)
+    }
+
     if (!user) {
       // Nouveau compte client — mot de passe aléatoire (connexion via Google uniquement)
       const randomPassword = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10)

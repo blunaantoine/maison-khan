@@ -46,6 +46,31 @@ function rateLimit(ip: string): boolean {
   return true
 }
 
+// Limiteur générique par IP + groupe de routes (mémoire de l'instance).
+const genericHits = new Map<string, { count: number; reset: number }>()
+function hit(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now()
+  if (genericHits.size > 5000) {
+    for (const [k, v] of genericHits) if (v.reset < now) genericHits.delete(k)
+  }
+  const entry = genericHits.get(key)
+  if (!entry || entry.reset < now) {
+    genericHits.set(key, { count: 1, reset: now + windowMs })
+    return true
+  }
+  if (entry.count >= max) return false
+  entry.count += 1
+  return true
+}
+
+// Routes appelées par les prestataires (webhooks/IPN) : jamais limitées par IP
+const PROVIDER_CALLBACKS = [
+  '/api/paydunya/callback',
+  '/api/paygate/callback',
+  '/api/kprimepay/webhook',
+  '/api/webhooks/resend',
+]
+
 function getClientIp(req: NextRequest): string {
   const xff = req.headers.get('x-forwarded-for')
   if (xff) return xff.split(',')[0].trim()
@@ -72,6 +97,37 @@ function withoutAuthHeaders(req: NextRequest): Headers {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   const method = req.method.toUpperCase()
+
+  // ──────────────────────────────────────────────────────────────
+  // 0. Limitation de débit (anti abus / consommation de ressources)
+  // ──────────────────────────────────────────────────────────────
+  if (!PROVIDER_CALLBACKS.some((p) => pathname.startsWith(p))) {
+    const ip = getClientIp(req)
+    const isWrite = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+    const isPayment =
+      pathname.startsWith('/api/kprimepay/') ||
+      pathname.startsWith('/api/paydunya') ||
+      pathname.startsWith('/api/paygate') ||
+      pathname.startsWith('/api/payments/')
+    let allowed = true
+    if (pathname === '/api/orders' && method === 'POST') {
+      allowed = hit(`orders:${ip}`, 10, 60_000)
+    } else if (isPayment && isWrite) {
+      allowed = hit(`pay:${ip}`, 20, 60_000)
+    } else if (pathname === '/api/push/subscribe' && isWrite) {
+      allowed = hit(`push:${ip}`, 20, 60_000)
+    } else if (isWrite) {
+      allowed = hit(`write:${ip}`, 120, 60_000)
+    } else {
+      allowed = hit(`read:${ip}`, 600, 60_000)
+    }
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Trop de requêtes. Réessayez dans une minute.' },
+        { status: 429, headers: { 'Retry-After': '60' } }
+      )
+    }
+  }
 
   // ──────────────────────────────────────────────────────────────
   // 1. Rate-limit auth endpoints (login, register, forgot-password)

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { canAccessOrder } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 const PAYDUNYA_MASTER_KEY = process.env.PAYDUNYA_MASTER_KEY  || ''
@@ -38,6 +39,9 @@ export async function POST(request: NextRequest) {
 
     if (!order) {
       return NextResponse.json({ success: false, error: 'Commande non trouvée' }, { status: 404 })
+    }
+    if (!(await canAccessOrder(request, order))) {
+      return NextResponse.json({ success: false, error: 'Accès refusé à cette commande' }, { status: 403 })
     }
 
     if (order.paymentStatus === 'paid') {
