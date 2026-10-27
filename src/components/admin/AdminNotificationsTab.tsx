@@ -167,10 +167,12 @@ export function AdminNotificationsTab({ onUnreadChange }: AdminNotificationsTabP
 
   useEffect(() => {
     mounted.current = true
-    fetchAll()
+    // Premier chargement différé d'un tick (pas de setState pendant l'effet)
+    const initial = window.setTimeout(fetchAll, 0)
     const interval = setInterval(fetchAll, 30000)
     return () => {
       mounted.current = false
+      window.clearTimeout(initial)
       clearInterval(interval)
     }
   }, [fetchAll])

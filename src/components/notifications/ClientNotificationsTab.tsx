@@ -91,7 +91,9 @@ export function ClientNotificationsTab({ onNavigate }: ClientNotificationsTabPro
   )
 
   useEffect(() => {
-    fetchList()
+    // Premier chargement différé d'un tick (pas de setState pendant l'effet)
+    const initial = window.setTimeout(() => fetchList(), 0)
+    return () => window.clearTimeout(initial)
     // recharge quand les filtres changent (la page est remise à 1 par les setters)
   }, [fetchList])
 

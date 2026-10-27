@@ -95,11 +95,13 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    onSelect(api)
+    // Sélection initiale différée d'un tick (pas de setState pendant l'effet)
+    const initial = window.setTimeout(() => onSelect(api), 0)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
 
     return () => {
+      window.clearTimeout(initial)
       api?.off("select", onSelect)
     }
   }, [api, onSelect])

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type RefObject } from 'react'
+import { safeNavigate } from '@/lib/safe-redirect'
 
 /**
  * Bouton de paiement KPrimePay - composant autonome.
@@ -184,7 +185,7 @@ export default function KPrimePayButton({ orderItems, user, checkoutFormRef }: K
       }
 
       // 3- suivi du paiement en direct (loading reste actif pendant la navigation)
-      window.location.href = `/kprimepay/retour?flow=push&orderId=${encodeURIComponent(orderId)}`
+      safeNavigate(`/kprimepay/retour?flow=push&orderId=${encodeURIComponent(orderId)}`)
     } catch (error) {
       console.error('KPrimePay error:', error)
       setError("Erreur lors de l'envoi du paiement : " + (error instanceof Error ? error.message : 'Erreur inconnue'))

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { safeNavigate } from '@/lib/safe-redirect';
 import {
   ChevronLeft,
   ShoppingBag,
@@ -139,7 +140,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       quantity,
     };
     localStorage.setItem('mk_direct_order', JSON.stringify(directOrder));
-    window.location.assign('/?checkout=1');
+    safeNavigate('/?checkout=1');
   };
 
   const handleWhatsAppOrder = () => {

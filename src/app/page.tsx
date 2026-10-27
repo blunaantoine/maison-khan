@@ -1023,44 +1023,17 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const [siteContent, setSiteContent] = useState<SiteContent[]>([])
-  const [mounted, setMounted] = useState(false)
+  // Hydratation : passe à true une fois monté côté client (gating des portails).
+  // useSyncExternalStore évite un setState dans un effet (rendu en cascade).
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
   const [checkoutEmail, setCheckoutEmail] = useState('')
   const [checkoutPhone, setCheckoutPhone] = useState('')
   const [pushState, setPushState] = useState<PushClientState>('inactive')
   const [pushBusy, setPushBusy] = useState(false)
-  const openCheckout = () => {
-    setCheckoutEmail(user?.email || '')
-    setCheckoutPhone(user?.phone || '')
-    setShowCheckoutModal(true)
-    setCheckoutStep('info')
-  }
-
-  // Set mounted on client side + load cart/direct order from localStorage
-  useEffect(() => {
-    setMounted(true)
-    try {
-      // Load direct order from product detail page
-      const storedOrder = localStorage.getItem('mk_direct_order')
-      if (storedOrder) {
-        const data = JSON.parse(storedOrder)
-        if (data?.product) {
-          setDirectOrder(data as any)
-          localStorage.removeItem('mk_direct_order')
-          openCheckout()
-        }
-      }
-      // Load cart from localStorage (synced from product detail page)
-      const stored = localStorage.getItem('mk_cart')
-      if (stored) {
-        const items = JSON.parse(stored)
-        if (Array.isArray(items) && items.length > 0) {
-          setCart(items)
-          setShowCartModal(true)
-          localStorage.removeItem('mk_cart')
-        }
-      }
-    } catch {}
-  }, [])
 
   // Admin Users State
   const [adminUsers, setAdminUsers] = useState<User[]>([])
@@ -1123,6 +1096,46 @@ export default function Home() {
     price: number
     quantity: number
   } | null>(null)
+
+  const openCheckout = () => {
+    setCheckoutEmail(user?.email || '')
+    setCheckoutPhone(user?.phone || '')
+    setShowCheckoutModal(true)
+    setCheckoutStep('info')
+  }
+
+  // Au montage : recharge la commande « achat direct » venue de la fiche produit
+  // puis le panier stocké dans localStorage (déclenche l'ouverture des modales).
+  // Les setStates passent par un setTimeout(0) : lecture d'un système externe
+  // (localStorage) une seule fois, sans rendu en cascade pendant l'effet.
+  useEffect(() => {
+    const restore = () => {
+      try {
+        // Load direct order from product detail page
+        const storedOrder = localStorage.getItem('mk_direct_order')
+        if (storedOrder) {
+          const data = JSON.parse(storedOrder)
+          if (data?.product) {
+            setDirectOrder(data as any)
+            localStorage.removeItem('mk_direct_order')
+            openCheckout()
+          }
+        }
+        // Load cart from localStorage (synced from product detail page)
+        const stored = localStorage.getItem('mk_cart')
+        if (stored) {
+          const items = JSON.parse(stored)
+          if (Array.isArray(items) && items.length > 0) {
+            setCart(items)
+            setShowCartModal(true)
+            localStorage.removeItem('mk_cart')
+          }
+        }
+      } catch {}
+    }
+    const t = window.setTimeout(restore, 0)
+    return () => window.clearTimeout(t)
+  }, [])
 
   // Product modal - selected color
   const [selectedColorValue, setSelectedColorValue] = useState<string | null>(null)
@@ -1342,9 +1355,11 @@ export default function Home() {
   }
 
   // Ouverture de « Mon Compte » : chargement immédiat des adresses
+  // (setTimeout(0) : le fetch est différé d'un tick — pas de setState pendant l'effet)
   useEffect(() => {
     if (currentSection === 'account' && user?.id) {
-      fetchUserAddresses()
+      const t = window.setTimeout(() => { fetchUserAddresses() }, 0)
+      return () => window.clearTimeout(t)
     }
   }, [currentSection, user?.id])
 
@@ -1453,16 +1468,6 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    if (currentSection === 'admin' && (user?.role === 'admin' || user?.role === 'manager')) {
-      fetchDashboardStats()
-      fetchAdminOrders()
-      if (user?.role === 'admin') {
-        fetchAdminUsers()
-      }
-    }
-  }, [currentSection, user?.role])
-
   // Rafraîchissement AUTOMATIQUE des commandes admin : toutes les 30 s tant que
   // l'onglet « Commandes » est affiché (et la page visible) — les nouvelles
   // commandes et les paiements confirmés apparaissent sans recharger la page.
@@ -1530,6 +1535,20 @@ export default function Home() {
       console.error('Error fetching users:', error)
     }
   }
+
+  // Ouverture de la section admin : chargement des KPIs, commandes (+ users)
+  useEffect(() => {
+    if (currentSection === 'admin' && (user?.role === 'admin' || user?.role === 'manager')) {
+      const t = window.setTimeout(() => {
+        fetchDashboardStats()
+        fetchAdminOrders()
+        if (user?.role === 'admin') {
+          fetchAdminUsers()
+        }
+      }, 0)
+      return () => window.clearTimeout(t)
+    }
+  }, [currentSection, user?.role])
 
   // Create user (admin only)
   const handleCreateUser = async () => {
@@ -2378,7 +2397,7 @@ export default function Home() {
                 {appleEnabled && (
                   <button
                     type="button"
-                    onClick={() => { window.location.href = '/api/auth/apple' }}
+                    onClick={() => { safeNavigate('/api/auth/apple') }}
                     className="w-full flex items-center justify-center gap-3 p-3 bg-[#0A0A0A] border border-[#0A0A0A] hover:bg-[#191817] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C] transition-colors"
                   >
                     <svg className="w-5 h-5 shrink-0" viewBox="0 0 384 512" aria-hidden="true">
@@ -2391,7 +2410,7 @@ export default function Home() {
                 {googleEnabled && (
                   <button
                     type="button"
-                    onClick={() => { window.location.href = '/api/auth/google' }}
+                    onClick={() => { safeNavigate('/api/auth/google') }}
                     className="w-full flex items-center justify-center gap-3 p-3 bg-white border border-[#E5E0DA] hover:border-[#9C7C5C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9C7C5C] transition-colors"
                   >
                     <svg className="w-5 h-5 shrink-0" viewBox="0 0 48 48" aria-hidden="true">

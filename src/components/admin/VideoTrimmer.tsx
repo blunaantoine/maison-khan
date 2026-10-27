@@ -95,9 +95,13 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
   const aliveRef = useRef(true)
   const durationReadyRef = useRef(false)
 
-  phaseRef.current = phase
-  startRef.current = start
-  endRef.current = end
+  // Miroirs des états pour les handlers/captures — synchronisés après commit
+  // (les refs ne doivent jamais être écrites pendant le rendu).
+  useEffect(() => {
+    phaseRef.current = phase
+    startRef.current = start
+    endRef.current = end
+  }, [phase, start, end])
 
   const stopPreview = () => {
     previewRef.current = false
@@ -132,9 +136,13 @@ export default function VideoTrimmer({ open, onClose, onAdded, onSuccess, onErro
     return () => { aliveRef.current = false }
   }, [])
 
-  // Fermeture : on coupe tout et on nettoie l'objectURL.
+  // Fermeture : on coupe tout et on nettoie l'objectURL (différé d'un tick
+  // pour éviter les setState synchrones pendant l'effet).
   useEffect(() => {
-    if (!open) resetAll()
+    if (!open) {
+      const t = window.setTimeout(resetAll, 0)
+      return () => window.clearTimeout(t)
+    }
   }, [open])
 
   // Nettoyage final au démontage.

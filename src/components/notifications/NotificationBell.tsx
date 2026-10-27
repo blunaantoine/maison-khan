@@ -66,7 +66,8 @@ export function NotificationBell({ onNavigate, className }: NotificationBellProp
   }, [])
 
   useEffect(() => {
-    refreshCount()
+    // Premier comptage différé d'un tick (pas de setState pendant l'effet)
+    const initial = window.setTimeout(() => refreshCount(), 0)
     const interval = setInterval(() => {
       // Ne pas poller en arrière-plan (économie batterie/data mobile)
       if (document.visibilityState === 'visible') refreshCount()
@@ -81,6 +82,7 @@ export function NotificationBell({ onNavigate, className }: NotificationBellProp
     window.addEventListener('focus', onVisible)
     window.addEventListener('mk-notifications-changed', onExternalChange)
     return () => {
+      window.clearTimeout(initial)
       clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)

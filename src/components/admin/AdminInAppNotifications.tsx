@@ -110,9 +110,13 @@ export function AdminInAppNotifications() {
   }, [])
 
   useEffect(() => {
-    fetchAll()
+    // Premier chargement différé d'un tick (pas de setState pendant l'effet)
+    const initial = window.setTimeout(() => fetchAll(), 0)
     const interval = setInterval(() => fetchAll(), 30000)
-    return () => clearInterval(interval)
+    return () => {
+      window.clearTimeout(initial)
+      clearInterval(interval)
+    }
   }, [fetchAll])
 
   // ── Composer ──
