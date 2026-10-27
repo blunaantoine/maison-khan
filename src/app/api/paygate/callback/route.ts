@@ -26,9 +26,8 @@ export async function POST(request: NextRequest) {
       formData.forEach((value, key) => { data[key] = value.toString() })
     }
 
-    console.log('[PayGate Callback] Données:', JSON.stringify(data, null, 2))
 
-    const { tx_reference, identifier, payment_reference, amount, datetime, payment_method, phone_number, status } = data
+    const { tx_reference, identifier, payment_reference, amount, datetime, payment_method, phone_number } = data
 
     // Find payment
     const payment = await db.payment.findFirst({
@@ -47,6 +46,36 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[PayGate Callback] Paiement trouvé: ${payment.id}, commande: ${payment.order.orderNumber}`)
+
+    // Le corps du callback n'est PAS authentifié : n'importe qui pourrait
+    // envoyer « status: 0 » avec un identifiant connu et marquer une commande
+    // payée. On ne croit donc que le statut reconfirmé auprès de l'API PayGate.
+    const authToken = process.env.PAYGATE_AUTH_TOKEN
+    const baseUrl = process.env.PAYGATE_BASE_URL || 'https://paygateglobal.com/api/v1'
+    const reference = payment.paymentToken || (tx_reference as string)
+    let verifiedStatus: number | null = null
+    if (authToken && reference) {
+      try {
+        const body = new URLSearchParams()
+        body.append('auth_token', authToken)
+        body.append('tx_reference', reference)
+        const res = await fetch(`${baseUrl}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+          signal: AbortSignal.timeout(10_000),
+        })
+        const json = await res.json()
+        if (typeof json?.status === 'number') verifiedStatus = json.status
+      } catch (e) {
+        console.error('[PayGate Callback] Vérification impossible:', e)
+      }
+    }
+    if (verifiedStatus === null) {
+      console.warn('[PayGate Callback] Statut non vérifiable auprès de PayGate — ignoré')
+      return NextResponse.json({ received: true, verified: false })
+    }
+    const status = verifiedStatus
 
     // Determine new status
     let newStatus = 'pending'

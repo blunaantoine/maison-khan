@@ -34,10 +34,10 @@ const ASSUMED_FAILURE_PREFIXES = [
 export async function GET(request: NextRequest) {
   const secretParam = request.nextUrl.searchParams.get('secret')
   const authorized =
-    !CRON_SECRET ||
+    Boolean(CRON_SECRET) && (
     request.headers.get('x-cron-secret') === CRON_SECRET ||
     request.headers.get('authorization') === `Bearer ${CRON_SECRET}` ||
-    secretParam === CRON_SECRET
+    secretParam === CRON_SECRET)
   if (!authorized) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
   }

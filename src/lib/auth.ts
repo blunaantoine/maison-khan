@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
 /**
@@ -19,10 +19,15 @@ const SESSION_DURATION = '24h'
 const COOKIE_MAX_AGE_SECONDS = 24 * 60 * 60 // 24h
 
 function getSecret(): Uint8Array {
-  const secret =
-    process.env.JWT_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    'maison-khan-dev-fallback-secret-change-me'
+  const secret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET
+  if (!secret || secret.length < 32) {
+    // Jamais de secret par défaut en production : un secret public permettrait
+    // à n'importe qui de forger un cookie de session admin.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET manquant ou trop court (32 caractères minimum) — générez-le avec : openssl rand -hex 32')
+    }
+    return new TextEncoder().encode('maison-khan-dev-only-secret-not-for-production')
+  }
   return new TextEncoder().encode(secret)
 }
 

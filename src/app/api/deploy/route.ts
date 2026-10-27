@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
+import { timingSafeEqual } from 'crypto'
 import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
-// Secret pour sécuriser le webhook (à définir dans .env)
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'maison-khan-deploy-2024'
+// Secret pour sécuriser le webhook (à définir dans .env). Sans secret
+// configuré, l'endpoint est désactivé (jamais de valeur par défaut publique :
+// ce webhook exécute du code shell sur le serveur).
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET || ''
+
+function isAuthorized(request: NextRequest): boolean {
+  if (DEPLOY_SECRET.length < 16) return false
+  const authHeader = request.headers.get('authorization')
+  const given = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : ''
+  const a = Buffer.from(given)
+  const b = Buffer.from(DEPLOY_SECRET)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
 
 // Branche déployée par le webhook (défaut : la branche de fusion
 // dashboard + mobile-money-integration — celle qui tourne en production)
@@ -13,13 +25,9 @@ const DEPLOY_BRANCH = process.env.DEPLOY_BRANCH || 'fusion/dashboard+mmi'
 
 export async function POST(request: NextRequest) {
   try {
-    // Vérifier le secret dans les headers ou query params
-    const authHeader = request.headers.get('authorization')
-    const urlSecret = request.nextUrl.searchParams.get('secret')
-
-    const providedSecret = authHeader?.replace('Bearer ', '') || urlSecret
-
-    if (providedSecret !== DEPLOY_SECRET) {
+    // Secret uniquement via l'en-tête Authorization: Bearer (un secret en
+    // query string finit dans les logs d'accès et l'historique).
+    if (!isAuthorized(request)) {
       return NextResponse.json(
         { error: 'Non autorisé' },
         { status: 401 }
@@ -73,10 +81,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  // Vérifier le secret
-  const urlSecret = request.nextUrl.searchParams.get('secret')
-
-  if (urlSecret !== DEPLOY_SECRET) {
+  if (!isAuthorized(request)) {
     return NextResponse.json(
       { error: 'Non autorisé' },
       { status: 401 }
@@ -86,6 +91,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     status: 'ok',
     message: 'API de déploiement MAISON KHAN',
-    usage: 'POST /api/deploy?secret=VOTRE_SECRET'
+    usage: 'POST /api/deploy avec l\'en-tête Authorization: Bearer VOTRE_SECRET'
   })
 }

@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Check ownership (unless admin)
-      if (!isAdmin && order.userId !== userId && order.userId !== null) {
+      if (!isAdmin && order.userId !== userId) {
         return NextResponse.json(
           { error: 'Non autorisé' },
           { status: 403 }
@@ -139,8 +139,7 @@ export async function GET(request: NextRequest) {
 //     const validUserId = userId && userId !== '' ? userId : null
 //     const body = await request.json()
 
-//     console.log('Données reçues:', JSON.stringify(body, null, 2))
-
+// 
 //     const { 
 //       items, 
 //       customerInfo, 
@@ -239,7 +238,6 @@ export async function POST(request: NextRequest) {
     const validUserId = userId && userId !== '' ? userId : null  // <-- AJOUTEZ CETTE LIGNE
     
     const body = await request.json()
-    console.log('Données reçues:', JSON.stringify(body, null, 2))
     
     const { 
       items, 
@@ -265,6 +263,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // ── Prix recalculés CÔTÉ SERVEUR ──
+    // Les montants envoyés par le navigateur (subtotal, total, unitPrice) ne
+    // sont jamais crus : un client pouvait sinon payer 10 FCFA un article à
+    // 50 000 FCFA. On relit le prix réel en base (produit + couleur + taille).
+    if (!Array.isArray(items) || items.length > 50) {
+      return NextResponse.json({ error: 'Panier invalide' }, { status: 400 })
+    }
+    const pricedItems: Array<{ item: Record<string, unknown>; unitPrice: number; quantity: number }> = []
+    for (const raw of items as Record<string, unknown>[]) {
+      const quantity = Number(raw.quantity)
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+        return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
+      }
+      const productId = typeof raw.productId === 'string' ? raw.productId : null
+      const colorName = typeof raw.colorName === 'string' && raw.colorName ? raw.colorName : null
+      if (!productId) {
+        return NextResponse.json({ error: 'Article invalide dans le panier' }, { status: 400 })
+      }
+      const colors = await db.productColor.findMany({
+        where: { productId, product: { isActive: true }, ...(colorName ? { colorName } : {}) },
+        select: { sizes: true },
+      })
+      let unitPrice = NaN
+      for (const color of colors) {
+        try {
+          const sizes = JSON.parse(color.sizes || '[]') as { size: string; price: number }[]
+          const found = sizes.find((sz) => String(sz.size) === String(raw.size))
+          if (found) { unitPrice = Number(found.price); break }
+        } catch { /* couleur illisible : on passe à la suivante */ }
+      }
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        return NextResponse.json({ error: 'Article ou prix introuvable — rafraîchissez votre panier' }, { status: 400 })
+      }
+      pricedItems.push({ item: raw, unitPrice, quantity })
+    }
+    const serverSubtotal = pricedItems.reduce((sum, p) => sum + p.unitPrice * p.quantity, 0)
+    // La livraison est gratuite côté boutique (shippingCost = 0 partout dans le checkout).
+    const serverShipping = 0
+    const serverTotal = serverSubtotal + serverShipping
+
     // Create order with retry on duplicate orderNumber (P2002)
     let order
     const maxRetries = 3
@@ -285,23 +323,23 @@ export async function POST(request: NextRequest) {
             shippingPhone: shippingAddress?.phone || customerInfo.phone,
             shippingLatitude: shippingAddress?.latitude ? parseFloat(shippingAddress.latitude.toString()) : null,
             shippingLongitude: shippingAddress?.longitude ? parseFloat(shippingAddress.longitude.toString()) : null,
-            subtotal: subtotal || 0,
-            shippingCost: shippingCost || 0,
+            subtotal: serverSubtotal,
+            shippingCost: serverShipping,
             discount: 0,
-            total: total || 0,
+            total: serverTotal,
             status: 'pending',
             paymentStatus: 'pending',
             paymentMethod: paymentMethod || null,
             items: {
-              create: items.map((item: Record<string, unknown>) => ({
-                productId: item.productId as string || null,
+              create: pricedItems.map(({ item, unitPrice, quantity }) => ({
+                productId: item.productId as string,
                 productName: item.productName as string || item.name as string,
                 productImage: item.productImage as string || item.image as string || null,
                 colorName: item.colorName as string || null,
                 size: item.size as string,
-                quantity: item.quantity as number,
-                unitPrice: item.unitPrice as number || item.price as number,
-                totalPrice: (item.unitPrice as number || item.price as number) * (item.quantity as number)
+                quantity,
+                unitPrice,
+                totalPrice: unitPrice * quantity
               }))
             }
           },

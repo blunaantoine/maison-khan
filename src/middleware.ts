@@ -54,6 +54,21 @@ function getClientIp(req: NextRequest): string {
   return 'unknown'
 }
 
+/**
+ * Copie des en-têtes de la requête SANS aucune identité injectée par le client.
+ * Les routes font confiance à x-auth-user-id / x-auth-role : seul le middleware
+ * (après vérification du JWT) a le droit de les poser. Sans ce nettoyage, une
+ * requête GET /api/cart avec « x-auth-user-id: <id d'un autre> » lisait le
+ * panier de n'importe qui.
+ */
+function withoutAuthHeaders(req: NextRequest): Headers {
+  const h = new Headers(req.headers)
+  h.delete('x-auth-user-id')
+  h.delete('x-auth-role')
+  h.delete('x-auth-email')
+  return h
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   const method = req.method.toUpperCase()
@@ -77,7 +92,7 @@ export async function middleware(req: NextRequest) {
       )
     }
     // Don't return — let the request go through to the route handler.
-    return NextResponse.next()
+    return NextResponse.next({ request: { headers: withoutAuthHeaders(req) } })
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -121,7 +136,7 @@ export async function middleware(req: NextRequest) {
     // Inject the user id + role into request headers so the route can
     // read them WITHOUT needing to re-verify the JWT. The route will
     // STILL fetch the user from DB to confirm isActive + role.
-    const requestHeaders = new Headers(req.headers)
+    const requestHeaders = withoutAuthHeaders(req)
     requestHeaders.set('x-auth-user-id', session.sub)
     requestHeaders.set('x-auth-role', session.role)
     requestHeaders.set('x-auth-email', session.email)
@@ -161,7 +176,7 @@ export async function middleware(req: NextRequest) {
       )
     }
 
-    const requestHeaders = new Headers(req.headers)
+    const requestHeaders = withoutAuthHeaders(req)
     requestHeaders.set('x-auth-user-id', session.sub)
     requestHeaders.set('x-auth-role', session.role)
     requestHeaders.set('x-auth-email', session.email)
@@ -191,7 +206,7 @@ export async function middleware(req: NextRequest) {
       )
     }
 
-    const requestHeaders = new Headers(req.headers)
+    const requestHeaders = withoutAuthHeaders(req)
     requestHeaders.set('x-auth-user-id', session.sub)
     requestHeaders.set('x-auth-role', session.role)
     requestHeaders.set('x-auth-email', session.email)
@@ -213,7 +228,7 @@ export async function middleware(req: NextRequest) {
     const token = readSessionCookie(req)
     const session = await verifySession(token)
     if (session) {
-      const requestHeaders = new Headers(req.headers)
+      const requestHeaders = withoutAuthHeaders(req)
       requestHeaders.set('x-auth-user-id', session.sub)
       requestHeaders.set('x-auth-role', session.role)
       requestHeaders.set('x-auth-email', session.email)
@@ -224,37 +239,25 @@ export async function middleware(req: NextRequest) {
     // Sans session : on RETIRE tout header d'identité envoyé par le client
     // pour empêcher l'usurpation (un invité ne peut pas rattacher une commande
     // au compte de quelqu'un d'autre).
-    const cleaned = new Headers(req.headers)
-    cleaned.delete('x-auth-user-id')
-    cleaned.delete('x-auth-role')
-    cleaned.delete('x-auth-email')
-    return NextResponse.next({ request: { headers: cleaned } })
+    return NextResponse.next({ request: { headers: withoutAuthHeaders(req) } })
   }
 
-  return NextResponse.next()
+  // GET /api/cart : session OPTIONNELLE (panier invité via x-session-id), mais
+  // si le client est connecté on injecte son identité VÉRIFIÉE.
+  if (pathname === '/api/cart' && method === 'GET') {
+    const session = await verifySession(readSessionCookie(req))
+    const requestHeaders = withoutAuthHeaders(req)
+    if (session) requestHeaders.set('x-auth-user-id', session.sub)
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
+
+  // Toute autre route API : aucune identité n'est injectée, et celles que le
+  // client aurait forgées sont supprimées.
+  return NextResponse.next({ request: { headers: withoutAuthHeaders(req) } })
 }
 
 export const config = {
-  // Only run middleware on API routes that need protection.
-  matcher: [
-    '/api/auth/login',
-    '/api/auth/register',
-    '/api/auth/forgot-password',
-    '/api/admin/:path*',
-    '/api/notifications',
-    '/api/email-logs',
-    '/api/client/notifications/:path*',
-    '/api/cart/:path*',
-    '/api/addresses/:path*',
-    '/api/push/subscribe',
-    '/api/orders',
-    '/api/products',
-    '/api/slides',
-    '/api/slides/:path*',
-    '/api/content',
-    '/api/menu',
-    '/api/subcategories',
-    '/api/variants',
-    '/api/settings/:path*',
-  ],
+  // Toutes les routes API passent par le middleware : il supprime les en-têtes
+  // d'identité forgés (x-auth-*) et applique le contrôle d'accès ci-dessus.
+  matcher: ['/api/:path*'],
 }

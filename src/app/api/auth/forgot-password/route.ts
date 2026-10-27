@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { randomInt } from 'crypto'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { sendEmail, getPasswordResetEmail } from '@/lib/email'
 import { trackEmailEvent, campaignLabel } from '@/lib/emailoqui'
 
@@ -16,7 +18,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('[FORGOT-PASSWORD] Request for email:', email)
+    if (typeof email !== 'string') {
+      return NextResponse.json({ error: 'Email requis' }, { status: 400 })
+    }
+
+    // Anti-abus : ce endpoint réinitialise réellement le mot de passe, on le
+    // limite par IP et par adresse (évite le verrouillage d'un compte par un tiers).
+    const ipLimit = rateLimit(`forgot:ip:${getClientIp(request)}`, 5, 15 * 60 * 1000)
+    const emailLimit = rateLimit(`forgot:email:${email.toLowerCase()}`, 3, 60 * 60 * 1000)
+    if (!ipLimit.allowed || !emailLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Trop de demandes. Réessayez plus tard.' },
+        { status: 429 }
+      )
+    }
 
     // Find user
     const user = await db.user.findUnique({
@@ -34,7 +49,8 @@ export async function POST(request: NextRequest) {
     console.log('[FORGOT-PASSWORD] User found:', user.email)
 
     // Generate new random password
-    const newPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase()
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+    const newPassword = Array.from({ length: 14 }, () => alphabet[randomInt(alphabet.length)]).join('')
     const hashedPassword = await bcrypt.hash(newPassword, 10)
 
     // Update user password
@@ -61,10 +77,10 @@ export async function POST(request: NextRequest) {
           },
         })
       } catch { /* jamais bloquant */ }
+      // Ne JAMAIS renvoyer le mot de passe dans la réponse : n'importe qui
+      // pourrait alors prendre le contrôle de n'importe quel compte (admin inclus).
       return NextResponse.json({
-        message: 'Email non configuré',
-        newPassword: newPassword,
-        note: 'Configurez RESEND_API_KEY pour envoyer des emails'
+        message: 'Si cet email existe, un nouveau mot de passe a été envoyé'
       })
     }
 
@@ -96,10 +112,8 @@ export async function POST(request: NextRequest) {
 
       if (!emailResult.success) {
         console.error('[FORGOT-PASSWORD] Failed to send email:', emailResult.error)
-        // Return password if email fails
         return NextResponse.json({
-          message: 'L\'email n\'a pas pu être envoyé',
-          newPassword: newPassword
+          message: 'Si cet email existe, un nouveau mot de passe a été envoyé'
         })
       }
 
@@ -126,8 +140,7 @@ export async function POST(request: NextRequest) {
         })
       } catch { /* jamais bloquant */ }
       return NextResponse.json({
-        message: 'Erreur d\'envoi d\'email',
-        newPassword: newPassword
+        message: 'Si cet email existe, un nouveau mot de passe a été envoyé'
       })
     }
 

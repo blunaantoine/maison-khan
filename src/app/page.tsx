@@ -2329,8 +2329,6 @@ export default function Home() {
 
         if (data.error) {
           showToast('Erreur', data.error, 'error')
-        } else if (data.newPassword) {
-          showToast('Mot de passe généré', `Nouveau mot de passe: ${data.newPassword}`, 'success')
         } else {
           showToast('Succès', data.message || 'Un nouveau mot de passe a été envoyé à votre email', 'success')
         }
