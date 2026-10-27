@@ -49,7 +49,11 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Le site est déjà ouvert ? On le focalise.
       for (const client of clientList) {
-        if ('focus' in client) return client.focus()
+        if ('focus' in client) {
+          return client.focus().then((focused) =>
+            focused && 'navigate' in focused ? focused.navigate(url).catch(() => focused) : focused
+          )
+        }
       }
       // Sinon on l'ouvre.
       return self.clients.openWindow(url)

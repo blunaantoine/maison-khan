@@ -88,7 +88,9 @@ export async function POST(request: NextRequest) {
     const orderId = body?.['data[custom_data][order_id]']
 
     const expectedHash = createHash('sha512').update(PAYDUNYA_MASTER_KEY).digest('hex')
-    if (hash !== expectedHash) {
+    // Sans clé maître configurée, le hash attendu serait sha512('') — public :
+    // n'importe qui pourrait forger un callback. On refuse dans ce cas.
+    if (!PAYDUNYA_MASTER_KEY || hash !== expectedHash) {
       console.warn('[Callback] Hash invalide — requête non PayDunya')
       return NextResponse.json({ received: false }, { status: 403 })
     }
@@ -115,6 +117,8 @@ export async function POST(request: NextRequest) {
           data: { paymentStatus: 'paid', status: 'paid' }
         })
         await decrementStock(orderId, orderId)
+        const paidOrder = await db.order.findUnique({ where: { id: orderId }, include: { items: true } })
+        if (paidOrder) await notifyPaymentConfirmed(paidOrder)
       }
       return NextResponse.json({ received: true })
     }
@@ -141,13 +145,6 @@ export async function POST(request: NextRequest) {
 
     if (status === 'completed') {
 
-      // Notification admin + reçu de paiement par email au client
-      const paidOrder = await db.order.findUnique({
-        where: { id: payment.orderId },
-        include: { items: true },
-      })
-      if (paidOrder) await notifyPaymentConfirmed(paidOrder)
-
       await db.$transaction(async (tx) => {
 
         const orderItems = await tx.orderItem.findMany({
@@ -165,8 +162,13 @@ export async function POST(request: NextRequest) {
           const sizes = JSON.parse(productColor.sizes) as { size: string; price: number; stock: number }[]
           const sizeInfo = sizes.find(s => s.size === item.size)
 
-          if (!sizeInfo || sizeInfo.stock < item.quantity) {
-            throw new Error(`Stock insuffisant pour ${item.productName} taille ${item.size}`)
+          if (!sizeInfo) continue
+          // Le client a DÉJÀ payé : on ne bloque jamais l'enregistrement du
+          // paiement pour un stock insuffisant (sinon la commande restait
+          // « en attente » alors que l'argent est encaissé). Le stock est
+          // simplement ramené à 0 et l'admin est alerté dans les logs.
+          if (sizeInfo.stock < item.quantity) {
+            console.warn(`[PayDunya Callback] Stock insuffisant pour ${item.productName} taille ${item.size} — commande payée quand même`)
           }
 
           const updatedSizes = sizes.map(s =>
@@ -186,6 +188,15 @@ export async function POST(request: NextRequest) {
           data: { paymentStatus: 'paid', status: 'paid' }
         })
       })
+
+      // Notification admin + reçu de paiement au client — APRÈS l'enregistrement
+      // du paiement (ordre corrigé : avant, un échec de la transaction laissait
+      // un reçu envoyé pour une commande jamais marquée payée).
+      const paidOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (paidOrder) await notifyPaymentConfirmed(paidOrder)
 
     } else if (status === 'cancelled' || status === 'failed') {
 

@@ -27,7 +27,19 @@ export async function processDuePushCampaigns(): Promise<number> {
     return 0
   }
 
+  let processed = 0
   for (const campaign of due) {
+    // « Réclamation » atomique : si l'admin ouvre le panneau pile pendant que le
+    // cron tourne, une seule des deux exécutions obtient la campagne (sinon les
+    // clients recevraient la même notification deux fois). 'sent' est posé juste
+    // après l'envoi ; la campagne ne repart jamais.
+    const claimed = await db.pushCampaign.updateMany({
+      where: { id: campaign.id, status: 'scheduled' },
+      data: { status: 'sent', sentAt: new Date() },
+    }).catch(() => ({ count: 0 }))
+    if (claimed.count === 0) continue
+    processed++
+
     let sentCount = 0
     try {
       sentCount = await sendPushToAll({
@@ -53,5 +65,5 @@ export async function processDuePushCampaigns(): Promise<number> {
     }
   }
 
-  return due.length
+  return processed
 }
