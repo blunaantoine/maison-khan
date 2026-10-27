@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react'
+import { safeNavigate } from '@/lib/safe-redirect'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
@@ -389,7 +390,7 @@ useImperativeHandle(ref, () => ({
                     return
                   }
 
-                  window.location.href = invData.url
+                  if (!safeNavigate(invData.url)) throw new Error('URL de paiement invalide')
 
                 } catch (error) {
                   console.error('PayDunya error:', error)
@@ -1784,7 +1785,7 @@ export default function Home() {
       })
       const data = await res.json()
       if (data.success && data.url) {
-        window.location.href = data.url
+        if (!safeNavigate(data.url)) alert('URL de paiement invalide')
       } else {
         alert(data.error || 'Impossible d\'initialiser le paiement')
       }

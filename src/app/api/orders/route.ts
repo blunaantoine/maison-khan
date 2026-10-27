@@ -392,6 +392,9 @@ export async function PUT(request: NextRequest) {
     const isAdmin = role === 'admin' || role === 'manager'
     const body = await request.json()
     const { id, status, paymentStatus, trackingNumber, notes, estimatedDelivery } = body
+    if (id !== undefined && typeof id !== 'string') {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
 
     if (!id) {
       return NextResponse.json(
@@ -445,6 +448,9 @@ export async function DELETE(request: NextRequest) {
     const isAdmin = role === 'admin' || role === 'manager'
     const body = await request.json()
     const { id } = body
+    if (id !== undefined && typeof id !== 'string') {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
 
     if (!id) {
       return NextResponse.json(

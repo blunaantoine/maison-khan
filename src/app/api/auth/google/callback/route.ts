@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/secure-compare'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
 
     // 1. Anti-CSRF : le state doit correspondre au cookie posé au départ
     const cookieState = request.cookies.get(OAUTH_STATE_COOKIE)?.value
-    if (!cookieState || cookieState !== state) {
+    if (!safeEqual(cookieState, state)) {
       console.error('[GOOGLE-AUTH] State CSRF invalide')
       return redirectError(siteBaseUrl)
     }

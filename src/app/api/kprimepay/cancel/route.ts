@@ -13,6 +13,9 @@ import { KPP_PAYMENT_METHOD, syncKppPayment } from '@/lib/kprimepay'
 export async function POST(req: NextRequest) {
   try {
     const { orderId } = await req.json()
+    if (typeof orderId !== 'string' || !orderId) {
+      return NextResponse.json({ error: 'orderId invalide' }, { status: 400 })
+    }
     if (!orderId) {
       return NextResponse.json({ success: false, error: 'orderId manquant' }, { status: 400 })
     }

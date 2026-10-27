@@ -4,6 +4,9 @@ import bcrypt from 'bcryptjs'
 import { signSession, buildSessionCookie } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 
+// Hash bcrypt factice (coût 10) pour égaliser le temps de réponse
+const DUMMY_HASH = bcrypt.hashSync('maison-khan-dummy-password', 10)
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -37,6 +40,8 @@ export async function POST(request: NextRequest) {
     })
 
     if (!user) {
+      // Même durée que pour un vrai compte : on ne révèle pas si l'email existe
+      await bcrypt.compare(password, DUMMY_HASH)
       return NextResponse.json(
         { error: 'Email ou mot de passe incorrect' },
         { status: 401 }

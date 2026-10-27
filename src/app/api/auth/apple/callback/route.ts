@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/secure-compare'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
@@ -96,7 +97,7 @@ async function handleCallback(request: NextRequest) {
 
     // 1. Anti-CSRF : le state doit correspondre au cookie posé au départ
     const cookieState = request.cookies.get(APPLE_STATE_COOKIE)?.value
-    if (!cookieState || cookieState !== params.state) {
+    if (!safeEqual(cookieState, params.state)) {
       console.error('[APPLE-AUTH] State CSRF invalide')
       return redirectError(siteBaseUrl)
     }

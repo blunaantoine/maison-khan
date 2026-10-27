@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/secure-compare'
 import { db } from '@/lib/db'
 import { createHash } from 'crypto'
 import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
     const expectedHash = createHash('sha512').update(PAYDUNYA_MASTER_KEY).digest('hex')
     // Sans clé maître configurée, le hash attendu serait sha512('') — public :
     // n'importe qui pourrait forger un callback. On refuse dans ce cas.
-    if (!PAYDUNYA_MASTER_KEY || hash !== expectedHash) {
+    if (!PAYDUNYA_MASTER_KEY || !safeEqual(hash, expectedHash)) {
       console.warn('[Callback] Hash invalide — requête non PayDunya')
       return NextResponse.json({ received: false }, { status: 403 })
     }

@@ -18,6 +18,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const { orderId } = await request.json()
+    if (typeof orderId !== 'string' || !orderId) {
+      return NextResponse.json({ error: 'orderId invalide' }, { status: 400 })
+    }
 
     if (!orderId) {
       return NextResponse.json({ success: false, error: 'ID commande requis' }, { status: 400 })

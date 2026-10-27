@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/secure-compare'
 import { db } from '@/lib/db'
 import { KPP_PAYMENT_METHOD, getKppDebitStatus } from '@/lib/kprimepay'
 
@@ -34,10 +35,9 @@ const ASSUMED_FAILURE_PREFIXES = [
 export async function GET(request: NextRequest) {
   const secretParam = request.nextUrl.searchParams.get('secret')
   const authorized =
-    Boolean(CRON_SECRET) && (
-    request.headers.get('x-cron-secret') === CRON_SECRET ||
-    request.headers.get('authorization') === `Bearer ${CRON_SECRET}` ||
-    secretParam === CRON_SECRET)
+    safeEqual(request.headers.get('x-cron-secret'), CRON_SECRET) ||
+    safeEqual(request.headers.get('authorization'), `Bearer ${CRON_SECRET}`) ||
+    safeEqual(secretParam, CRON_SECRET)
   if (!authorized) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
   }

@@ -36,7 +36,18 @@ export async function GET(
       return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
     }
 
-    const filePath = path.join(uploadsDir(), filename)
+    // Liste blanche stricte : « prefixe-hash.ext » généré par saveDataUri.
+    // Rien d'autre (pas de « .. », de séparateur, d'octet nul ni d'extension inconnue).
+    if (!/^[a-zA-Z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif|avif|mp4|webm|mov|ogv)$/i.test(filename)) {
+      return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
+    }
+
+    const root = path.resolve(uploadsDir())
+    const filePath = path.resolve(root, filename)
+    // Confinement : le fichier résolu doit rester DANS le dossier des médias
+    if (!filePath.startsWith(root + path.sep)) {
+      return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
+    }
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
     }
@@ -48,6 +59,8 @@ export async function GET(
       'Content-Type': mimeTypeForFilename(filename),
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     })
 
     // ── Requête Range (ex. « bytes=0-999 ») : réponse partielle 206 ──

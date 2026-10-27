@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/secure-compare'
 import { db } from '@/lib/db'
 import { KPP_PAYMENT_METHOD, syncKppPayment } from '@/lib/kprimepay'
 
@@ -29,7 +30,7 @@ const ASSUMED_FAILURE_PREFIXES = ['Délai de confirmation dépassé', 'Annulé p
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export async function GET(request: NextRequest) {
-  if (!CRON_SECRET || request.headers.get('x-cron-secret') !== CRON_SECRET) {
+  if (!safeEqual(request.headers.get('x-cron-secret'), CRON_SECRET)) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/secure-compare'
 import { db } from '@/lib/db'
 import { FedaPay, Transaction } from 'fedapay'
 import { processDuePushCampaigns } from '@/lib/push-campaigns'
@@ -7,7 +8,7 @@ export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   // Fail-closed : sans CRON_SECRET, « Bearer undefined » ne doit pas passer.
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(authHeader, `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 

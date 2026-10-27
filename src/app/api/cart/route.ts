@@ -116,6 +116,9 @@ export async function PUT(request: NextRequest) {
     
     const body = await request.json()
     const { id, quantity } = body
+    if (typeof id !== 'string' || !Number.isInteger(quantity) || quantity > 20) {
+      return NextResponse.json({ error: 'Requête invalide' }, { status: 400 })
+    }
 
     if (!id || quantity === undefined) {
       return NextResponse.json(

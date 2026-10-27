@@ -213,7 +213,14 @@
     const time = new Date().toLocaleTimeString('fr-FR')
     const entry = document.createElement('div')
     entry.className = 'log-entry'
-    entry.innerHTML = `<span class="log-time">[${time}]</span><span class="log-${type}">${msg}</span>`
+    // textContent (jamais innerHTML) : un message d'erreur venant d'une API ne peut pas injecter de HTML/script
+    const t = document.createElement('span')
+    t.className = 'log-time'
+    t.textContent = `[${time}]`
+    const m = document.createElement('span')
+    m.className = `log-${String(type).replace(/[^a-z-]/g, '')}`
+    m.textContent = String(msg)
+    entry.append(t, m)
     logsDiv.appendChild(entry)
     logsDiv.scrollTop = logsDiv.scrollHeight
   }

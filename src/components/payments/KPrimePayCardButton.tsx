@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type RefObject } from 'react'
+import { safeNavigate } from '@/lib/safe-redirect'
 
 /**
  * Bouton « Payer par carte bancaire » - KPrimePay, carte uniquement.
@@ -146,7 +147,10 @@ export default function KPrimePayCardButton({ orderItems, user, checkoutFormRef 
       }
 
       // Redirection vers la page de paiement KPrimePay (loading reste actif pendant la navigation)
-      window.location.href = initData.url
+      if (!safeNavigate(initData.url)) {
+        setError('URL de paiement invalide')
+        setLoading(false)
+      }
     } catch (err) {
       console.error('KPrimePay card error:', err)
       setError("Erreur lors de l'initialisation du paiement : " + (err instanceof Error ? err.message : 'Erreur inconnue'))

@@ -42,9 +42,19 @@ export function getBaseUrl(request: NextRequest): string {
     // L'env contient l'URI de retour complète : on en déduit la base
     return envUri.replace(/\/api\/auth\/google\/callback\/?$/, '')
   }
+  // URL canonique du site : prioritaire sur les en-têtes Host / X-Forwarded-Host,
+  // que le client peut forger (« Host header injection » → redirection ouverte
+  // et jeton OAuth renvoyé vers un domaine d'attaquant).
+  const canonical = process.env.NEXT_PUBLIC_BASE_URL
+  if (canonical && /^https?:\/\/[^/]+$/.test(canonical.replace(/\/$/, ''))) {
+    return canonical.replace(/\/$/, '')
+  }
   const host = request.headers.get('x-forwarded-host')
     || request.headers.get('host')
     || new URL(request.url).host
+  if (!/^[a-zA-Z0-9.-]+(:\d{1,5})?$/.test(host)) {
+    throw new Error('Host invalide')
+  }
   const isLocal = host.startsWith('localhost') || host.startsWith('127.') || host.startsWith('0.0.0.0')
   const proto = request.headers.get('x-forwarded-proto') || (isLocal ? 'http' : 'https')
   return `${proto}://${host}`

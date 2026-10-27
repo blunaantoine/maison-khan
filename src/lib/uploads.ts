@@ -95,7 +95,9 @@ export function saveDataUri(dataUri: string, prefix: string): string | null {
   const buffer = Buffer.from(base64, 'base64')
   if (buffer.length === 0) return null
 
-  const ext = EXT_BY_MIME[mime] || 'bin'
+  const ext = EXT_BY_MIME[mime.toLowerCase()]
+  if (!ext) return null // type non autorisé (svg, html, exécutable…)
+  if (!/^[a-zA-Z0-9_-]{1,40}$/.test(prefix)) return null
   const hash = crypto.createHash('sha1').update(buffer).digest('hex').slice(0, 16)
   const filename = `${prefix}-${hash}.${ext}`
 
