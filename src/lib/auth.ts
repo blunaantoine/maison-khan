@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { NextRequest, NextResponse } from 'next/server'
+import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 
 /**
@@ -72,6 +73,8 @@ export async function verifySession(
     const { payload } = await jwtVerify(token, getSecret(), {
       algorithms: ['HS256'],
     })
+    // Un jeton de réinitialisation (purpose) n'est jamais une session valide.
+    if (payload.purpose || !payload.role) return null
     return {
       sub: payload.sub as string,
       email: payload.email as string,
@@ -205,4 +208,36 @@ export async function requireRole(
     }
   }
   return { user, response: null }
+}
+
+
+/**
+ * Jeton de réinitialisation de mot de passe (sans stockage en base).
+ * - signé HS256, durée de vie 30 min, usage distinct de la session (`purpose`)
+ * - lié à l'empreinte du mot de passe actuel (`ph`) : dès que le mot de passe
+ *   change, le lien devient invalide → usage unique.
+ */
+export function passwordFingerprint(passwordHash: string): string {
+  return createHash('sha256').update(passwordHash).digest('hex').slice(0, 24)
+}
+
+export async function signResetToken(user: { id: string; password: string }): Promise<string> {
+  return new SignJWT({ purpose: 'pwreset', ph: passwordFingerprint(user.password) })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(user.id)
+    .setIssuedAt()
+    .setExpirationTime('30m')
+    .sign(getSecret())
+}
+
+export async function verifyResetToken(
+  token: string
+): Promise<{ userId: string; ph: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] })
+    if (payload.purpose !== 'pwreset' || !payload.sub || typeof payload.ph !== 'string') return null
+    return { userId: payload.sub, ph: payload.ph }
+  } catch {
+    return null
+  }
 }

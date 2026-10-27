@@ -144,10 +144,13 @@ export async function POST(request: NextRequest) {
       console.warn('[webhook:resend] Signature svix invalide — requête rejetée')
       return NextResponse.json({ error: 'Signature invalide' }, { status: 401 })
     }
+  } else if (process.env.NODE_ENV === 'production') {
+    // En production, sans secret, n'importe qui pourrait injecter de faux
+    // événements e-mail : on refuse (fail-closed).
+    console.warn('[webhook:resend] RESEND_WEBHOOK_SECRET absente — requête rejetée')
+    return NextResponse.json({ error: 'Webhook non configuré' }, { status: 401 })
   } else {
-    console.warn(
-      '[webhook:resend] RESEND_WEBHOOK_SECRET absente — événement accepté sans vérification (configurez le secret en production)'
-    )
+    console.warn('[webhook:resend] RESEND_WEBHOOK_SECRET absente — accepté (développement uniquement)')
   }
 
   // ── Décodage (tolérant : événement unique ou tableau) ──

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { signSession, buildSessionCookie } from '@/lib/auth'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Email et mot de passe requis' },
         { status: 400 }
+      )
+    }
+
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return NextResponse.json({ error: 'Requête invalide' }, { status: 400 })
+    }
+
+    // Anti brute-force PAR COMPTE (en plus de la limite par IP du middleware) :
+    // empêche de deviner un mot de passe en changeant d'adresse IP.
+    const accountLimit = rateLimit(`login:acct:${email.toLowerCase()}`, 8, 15 * 60 * 1000)
+    if (!accountLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Trop de tentatives sur ce compte. Réessayez dans quelques minutes.' },
+        { status: 429 }
       )
     }
 

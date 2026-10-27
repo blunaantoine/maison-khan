@@ -47,6 +47,10 @@ export async function POST(request: NextRequest) {
 
     console.log(`[PayGate Callback] Paiement trouvé: ${payment.id}, commande: ${payment.order.orderNumber}`)
 
+    if (payment.status === 'completed') {
+      return NextResponse.json({ received: true, status: 'already_processed' })
+    }
+
     // Le corps du callback n'est PAS authentifié : n'importe qui pourrait
     // envoyer « status: 0 » avec un identifiant connu et marquer une commande
     // payée. On ne croit donc que le statut reconfirmé auprès de l'API PayGate.

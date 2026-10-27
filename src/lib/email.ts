@@ -56,7 +56,7 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions): Promis
 }
 
 // Password reset email template
-export function getPasswordResetEmail(newPassword: string) {
+export function getPasswordResetEmail(resetLink: string) {
   return `
     <!DOCTYPE html>
     <html>
@@ -79,18 +79,13 @@ export function getPasswordResetEmail(newPassword: string) {
         </p>
         
         <p style="color: #6B6560; font-size: 16px; line-height: 1.6;">
-          Vous avez demandé la réinitialisation de votre mot de passe. Voici votre nouveau mot de passe temporaire :
+          Vous avez demandé la réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour en choisir un nouveau. Ce lien est valable 30 minutes et ne peut être utilisé qu'une seule fois.
         </p>
-        
-        <div style="background-color: #F8F6F3; border: 1px solid #E5E0DA; padding: 20px; text-align: center; margin: 30px 0; border-radius: 8px;">
-          <p style="color: #6B6560; font-size: 14px; margin: 0 0 10px 0;">Votre nouveau mot de passe</p>
-          <p style="font-size: 24px; font-weight: bold; color: #0A0A0A; font-family: monospace; letter-spacing: 2px; margin: 0;">${newPassword}</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetLink}" style="display: inline-block; background-color: #0A0A0A; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-size: 16px;">Choisir un nouveau mot de passe</a>
         </div>
-        
-        <p style="color: #6B6560; font-size: 16px; line-height: 1.6;">
-          <strong>Important :</strong> Connectez-vous avec ce mot de passe et changez-le immédiatement depuis votre espace "Mon Compte".
-        </p>
-        
+
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #E5E0DA;">
           <p style="color: #6B6560; font-size: 14px; margin: 0;">
             Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.
