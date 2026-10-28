@@ -1439,6 +1439,32 @@ export default function Home() {
     }
   }
 
+  // Envoie un push de test à cet appareil et explique le résultat
+  const handleTestPush = async () => {
+    if (pushBusy) return
+    setPushBusy(true)
+    try {
+      const res = await fetch('/api/push/test', { method: 'POST', credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) {
+        showToast('Test impossible', data.error || 'Erreur', 'error')
+      } else if (!data.configured) {
+        showToast('Serveur non configuré', 'Les clés VAPID sont absentes du serveur (.env) : aucun push ne peut partir', 'error')
+      } else if (data.devices === 0) {
+        showToast('Aucun appareil enregistré', 'Désactivez puis réactivez les notifications sur cet appareil', 'error')
+      } else if (data.sent > 0) {
+        showToast('Test envoyé ✓', 'Fermez le site : la notification doit arriver sur votre écran')
+      } else {
+        const why = (data.failed || []).map((f: { status: number | string }) => f.status).join(', ')
+        showToast('Échec de l\'envoi', `Le service push a refusé (${why}). Réactivez les notifications.`, 'error')
+      }
+    } catch {
+      showToast('Test impossible', 'Erreur de connexion', 'error')
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
   // Fetch admin orders
   const fetchAdminOrders = async () => {
     try {
@@ -3281,6 +3307,15 @@ export default function Home() {
                           : 'Activer les notifications'}
                       </span>
                     </button>
+                    {pushState === 'subscribed' && (
+                      <button
+                        onClick={handleTestPush}
+                        disabled={pushBusy}
+                        className="text-[#9C7C5C] hover:text-[#0A0A0A] text-sm underline underline-offset-4 disabled:opacity-50"
+                      >
+                        Envoyer un test
+                      </button>
+                    )}
                     <button
                       onClick={handleLogout}
                       className="text-[#6B6560] hover:text-[#0A0A0A] text-sm uppercase tracking-wider"

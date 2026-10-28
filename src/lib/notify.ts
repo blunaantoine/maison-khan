@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { sendEmail } from '@/lib/email'
-import { sendPushToUser, type PushPayload } from '@/lib/push'
+import { sendPushToUser, sendPushToStaff, type PushPayload } from '@/lib/push'
 import {
   getAdminPaymentAlertEmail,
   getPaymentReceiptEmail,
@@ -189,6 +189,13 @@ export async function notifyOrderCreated(order: OrderWithItems): Promise<void> {
     message: `${order.orderNumber} — ${total} XOF · ${order.items.length} article${order.items.length > 1 ? 's' : ''} · ${order.customerFirstName || order.customerEmail}`,
     orderId: order.id,
   })
+  // Push aux admins / managers (téléphone, même site fermé)
+  await sendPushToStaff({
+    title: 'Nouvelle commande 🛍️',
+    body: `${order.orderNumber} — ${total} XOF · ${order.customerFirstName || order.customerEmail}`,
+    tag: `staff-${order.id}`,
+    url: '/',
+  })
 }
 
 /** Push au propriétaire de la commande (jamais bloquant, tag par commande). */
@@ -296,6 +303,13 @@ export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<voi
     title: 'Paiement confirmé ✓',
     message: `${order.orderNumber} — ${total} XOF reçus · reçu envoyé à ${order.customerEmail}`,
     orderId: order.id,
+  })
+  // Push aux admins / managers : paiement encaissé
+  await sendPushToStaff({
+    title: 'Paiement confirmé ✓',
+    body: `${order.orderNumber} — ${total} XOF reçus`,
+    tag: `staff-paid-${order.id}`,
+    url: '/',
   })
   if (order.customerEmail) {
     await sendClientEmail({

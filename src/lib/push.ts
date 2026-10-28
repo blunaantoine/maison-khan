@@ -29,6 +29,11 @@ function ensureConfigured(): boolean {
   return true
 }
 
+/** Les clés VAPID sont-elles configurées sur ce serveur ? */
+export function isPushConfigured(): boolean {
+  return ensureConfigured()
+}
+
 export interface PushPayload {
   title: string
   body: string
@@ -72,7 +77,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           data,
-          { TTL: 24 * 60 * 60 } // expiré après 24 h si l'appareil est injoignable
+          { TTL: 24 * 60 * 60, urgency: 'high' } // urgence haute : réveille un téléphone en veille (Android Doze)
         )
       } catch (e) {
         const status = (e as { statusCode?: number }).statusCode
@@ -135,7 +140,7 @@ export async function sendPushToAll(payload: PushPayload): Promise<number> {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           data,
-          { TTL: 24 * 60 * 60 }
+          { TTL: 24 * 60 * 60, urgency: 'high' }
         )
         return true
       } catch (e) {
@@ -167,4 +172,64 @@ export async function getPushAudienceStats(): Promise<{ subscribers: number; dev
   } catch {
     return { subscribers: 0, devices: 0 }
   }
+}
+
+
+/**
+ * Push à tous les admins / managers actifs (nouvelle commande, paiement confirmé).
+ * Ne lève jamais.
+ */
+export async function sendPushToStaff(payload: PushPayload): Promise<void> {
+  try {
+    const staff = await db.user.findMany({
+      where: { role: { in: ['admin', 'manager'] }, isActive: true },
+      select: { id: true },
+    })
+    await Promise.allSettled(staff.map((u) => sendPushToUser(u.id, payload)))
+  } catch (e) {
+    console.error('[push:error] staff :', e)
+  }
+}
+
+export interface PushTestResult {
+  configured: boolean
+  devices: number
+  sent: number
+  failed: { status: number | string; endpoint: string }[]
+}
+
+/** Envoie un push de test aux appareils d'un utilisateur et renvoie le détail (diagnostic). */
+export async function sendTestPush(userId: string): Promise<PushTestResult> {
+  const result: PushTestResult = { configured: ensureConfigured(), devices: 0, sent: 0, failed: [] }
+  if (!result.configured) return result
+  const subs = await db.pushSubscription.findMany({
+    where: { userId },
+    select: { id: true, endpoint: true, p256dh: true, auth: true },
+  })
+  result.devices = subs.length
+  const data = JSON.stringify({
+    title: 'Test MAISON KHAN ✓',
+    body: 'Les notifications fonctionnent sur cet appareil, même site fermé.',
+    url: '/',
+    tag: 'mk-test',
+  })
+  await Promise.all(
+    subs.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          data,
+          { TTL: 60, urgency: 'high' }
+        )
+        result.sent++
+      } catch (e) {
+        const status = (e as { statusCode?: number }).statusCode ?? String(e).slice(0, 80)
+        result.failed.push({ status, endpoint: new URL(sub.endpoint).hostname })
+        if (status === 404 || status === 410) {
+          await db.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {})
+        }
+      }
+    })
+  )
+  return result
 }
