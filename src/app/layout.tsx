@@ -68,9 +68,10 @@ export const metadata: Metadata = {
     description: "Chaussures de luxe artisanales confectionnées au Togo. Made in Africa.",
     images: [
       {
-        url: "/logo.png",
+        url: "/api/og/default",
         width: 1200,
         height: 630,
+        type: "image/jpeg",
         alt: "MAISON KHAN - Chaussures de Luxe",
       },
     ],
@@ -81,7 +82,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "MAISON KHAN | Chaussures de Luxe Made in Africa",
     description: "Chaussures de luxe artisanales confectionnées au Togo. Made in Africa.",
-    images: ["/logo.png"],
+    images: ["/api/og/default"],
   },
   
   // Robots

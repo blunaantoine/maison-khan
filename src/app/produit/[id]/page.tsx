@@ -37,24 +37,13 @@ export async function generateMetadata({
     } catch {}
   }
 
-  // Première image disponible
-  let firstImage = product.image;
-  for (const color of product.colors) {
-    try {
-      const imgs = JSON.parse(color.images);
-      if (Array.isArray(imgs) && imgs.length > 0) {
-        firstImage = imgs[0];
-        break;
-      }
-    } catch {}
-  }
-
   const title = `${product.name} | Maison Khan`;
   const description =
     product.description?.slice(0, 160) ||
     `Découvrez ${product.name} — ${product.subCategory || product.category} Maison Khan. ${minPrice > 0 ? 'À partir de ' + formatPrice(minPrice) + '.' : 'Prix sur demande.'}`;
 
-  const siteUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://maison-khan.com';
+  const siteUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://maison-khan.com').replace(/\/$/, '');
+  const ogImage = `${siteUrl}/api/og/${product.id}`;
 
   return {
     title,
@@ -76,13 +65,14 @@ export async function generateMetadata({
       url: `${siteUrl}/produit/${product.id}`,
       siteName: 'Maison Khan',
       locale: 'fr_FR',
+      // Image de partage dédiée : JPEG 1200×630 < 250 Ko en URL absolue (WhatsApp
+      // ignore les images trop lourdes ou en URL relative)
       images: [
         {
-          url: firstImage.startsWith('data:')
-            ? `${siteUrl}/logo.png`
-            : firstImage,
+          url: ogImage,
           width: 1200,
-          height: 1200,
+          height: 630,
+          type: 'image/jpeg',
           alt: product.name,
         },
       ],
@@ -91,7 +81,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title,
       description,
-      images: [firstImage.startsWith('data:') ? `${siteUrl}/logo.png` : firstImage],
+      images: [ogImage],
     },
     alternates: {
       canonical: `${siteUrl}/produit/${product.id}`,
