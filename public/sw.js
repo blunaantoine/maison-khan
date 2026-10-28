@@ -25,8 +25,15 @@ self.addEventListener('push', (event) => {
     if (event.data) data.body = event.data.text()
   }
 
+  // Pages du site déjà ouvertes : on les prévient pour afficher une alerte DANS
+  // l'application (bandeau) et rafraîchir la cloche instantanément.
+  const notifyPages = self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((list) => list.forEach((c) => c.postMessage({ type: 'mk-push', title: data.title, body: data.body, url: data.url })))
+    .catch(() => {})
+
   event.waitUntil(
-    self.registration.showNotification(data.title, {
+    notifyPages.then(() => self.registration.showNotification(data.title, {
       body: data.body,
       icon: ICON,
       badge: BADGE,
@@ -36,7 +43,7 @@ self.addEventListener('push', (event) => {
       lang: 'fr',
       vibrate: [200, 100, 200],
       data: { url: data.url },
-    })
+    }))
   )
 })
 

@@ -1185,7 +1185,7 @@ export default function Home() {
     setToasts(prev => [...prev, { id, title, description, type }])
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id))
-    }, 3000)
+    }, 6000)
   }
 
   // Get content by key
@@ -1924,24 +1924,52 @@ export default function Home() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Badge notifications admin : compte non-lues, rafraîchi toutes les 60 s
-  // (le composant AdminNotificationsTab fait son propre polling 30 s en détail)
+  // Alertes EN DIRECT dans l'application (le site est ouvert) :
+  //  - push reçu par le service worker (instantané) → bandeau + rafraîchit la cloche
+  //  - nouvelle notification détectée par la cloche (polling 15 s) → bandeau
+  useEffect(() => {
+    const onLive = (e: Event) => {
+      const d = (e as CustomEvent<{ title: string; message: string }>).detail
+      if (d?.title) showToast(d.title, d.message || '')
+    }
+    const onSwMessage = (e: MessageEvent) => {
+      if (e.data?.type !== 'mk-push') return
+      showToast(e.data.title || 'MAISON KHAN', e.data.body || '')
+      window.dispatchEvent(new CustomEvent('mk-notifications-changed'))
+    }
+    window.addEventListener('mk-live-notification', onLive)
+    if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', onSwMessage)
+    return () => {
+      window.removeEventListener('mk-live-notification', onLive)
+      if ('serviceWorker' in navigator) navigator.serviceWorker.removeEventListener('message', onSwMessage)
+    }
+  }, [])
+
+  // Badge notifications admin : compte non-lues, rafraîchi toutes les 20 s, avec
+  // une alerte à l'écran à chaque NOUVELLE notification (commande, paiement…).
   useEffect(() => {
     const isAdmin = user?.role === 'admin' || user?.role === 'manager'
     if (!isAdmin) return
 
     let active = true
+    let last: number | null = null
     const fetchUnread = async () => {
       try {
         const res = await fetch('/api/notifications', { credentials: 'include' })
         if (res.ok && active) {
           const data = await res.json()
-          setNotificationsUnread(data.unreadCount || 0)
+          const count = data.unreadCount || 0
+          setNotificationsUnread(count)
+          if (last !== null && count > last) {
+            const latest = (data.notifications || []).find((n: { isRead: boolean }) => !n.isRead)
+            if (latest) showToast(latest.title, latest.message)
+          }
+          last = count
         }
       } catch { /* silencieux */ }
     }
     fetchUnread()
-    const interval = setInterval(fetchUnread, 60000)
+    const interval = setInterval(fetchUnread, 20000)
     return () => { active = false; clearInterval(interval) }
   }, [user?.role])
 

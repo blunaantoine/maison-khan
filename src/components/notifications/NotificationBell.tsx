@@ -31,7 +31,7 @@ interface NotificationBellProps {
   className?: string
 }
 
-const POLL_INTERVAL_MS = 30_000
+const POLL_INTERVAL_MS = 15_000
 
 export function NotificationBell({ onNavigate, className }: NotificationBellProps) {
   const router = useRouter()
@@ -42,6 +42,8 @@ export function NotificationBell({ onNavigate, className }: NotificationBellProp
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
   const mounted = useRef(true)
+  // Dernier compteur connu (null = pas encore chargé) : sert à détecter une NOUVELLE notification
+  const lastCount = useRef<number | null>(null)
 
   useEffect(() => {
     mounted.current = true
@@ -58,7 +60,22 @@ export function NotificationBell({ onNavigate, className }: NotificationBellProp
       })
       if (res.ok) {
         const data = (await res.json()) as { count?: number }
-        if (mounted.current) setUnreadCount(data.count ?? 0)
+        const count = data.count ?? 0
+        if (mounted.current) setUnreadCount(count)
+        // Nouvelle notification arrivée pendant que le site est ouvert → alerte à l'écran
+        if (lastCount.current !== null && count > lastCount.current) {
+          try {
+            const r = await fetch('/api/client/notifications?pageSize=1&unread=1', { credentials: 'include' })
+            if (r.ok) {
+              const d = (await r.json()) as { notifications?: { title: string; message: string }[] }
+              const latest = d.notifications?.[0]
+              if (latest) {
+                window.dispatchEvent(new CustomEvent('mk-live-notification', { detail: { title: latest.title, message: latest.message } }))
+              }
+            }
+          } catch { /* l'alerte est un bonus : jamais bloquante */ }
+        }
+        lastCount.current = count
       }
     } catch {
       // silencieux : le prochain poll réessaiera
