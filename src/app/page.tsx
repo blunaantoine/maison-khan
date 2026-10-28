@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import type { AtelierImageData } from '@/components/atelier/AtelierCarousel'
-import { checkPushState, subscribeToPush, unsubscribeFromPush, type PushClientState } from '@/lib/push-client'
+import { checkPushState, subscribeToPush, unsubscribeFromPush, syncPushSubscription, type PushClientState } from '@/lib/push-client'
 
 // ── Chargement à la demande (code-splitting) ─────────────────────────────────
 // Ces composants ne servent que dans des sections précises (admin, dashboard
@@ -1397,6 +1397,18 @@ export default function Home() {
     const interval = setInterval(tick, 30000)
     return () => clearInterval(interval)
   }, [currentSection, user?.id])
+
+  // Après CHAQUE connexion : si les notifications sont déjà autorisées dans le
+  // navigateur (bandeau de première visite), on abonne silencieusement cet appareil
+  // au compte connecté — sans rien redemander.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    syncPushSubscription()
+      .then((state) => { if (!cancelled && state !== 'inactive') setPushState(state) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [user?.id])
 
   // État des notifications push (bouton du dashboard client)
   useEffect(() => {

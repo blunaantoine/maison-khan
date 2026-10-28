@@ -28,9 +28,9 @@ import {
 } from '@/lib/consent';
 import {
   getNotificationPermission,
-  requestNotificationPermission,
   sendBrowserNotification,
 } from './notifications';
+import { subscribeToPush } from '@/lib/push-client';
 
 /** Clé localStorage mémorisant le refus de l'encart "Activer les notifications". */
 const NOTIF_PROMPT_DISMISSED_KEY = 'mk_notif_prompt_dismissed';
@@ -189,8 +189,12 @@ export default function CookieConsent() {
 
   /** Clic sur "Activer les notifications" (geste utilisateur explicite). */
   const handleEnableNotifications = async () => {
-    const permission = await requestNotificationPermission();
-    if (permission === 'granted') {
+    // Autorisation + service worker + abonnement push (+ enregistrement serveur
+    // si le visiteur est connecté ; sinon la synchronisation se fait à sa connexion).
+    // Avant, seule l'autorisation était demandée : aucun abonnement n'existait,
+    // donc aucun push ne pouvait jamais arriver.
+    const state = await subscribeToPush();
+    if (state === 'subscribed' || state === 'granted-unsubscribed') {
       sendBrowserNotification(
         'MAISON KHAN',
         'Notifications activées ! Vous serez alerté·e du suivi de vos commandes.'

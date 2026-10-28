@@ -49,6 +49,26 @@ export function sendBrowserNotification(
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
+  // Android (Chrome) interdit « new Notification() » : il faut passer par le
+  // service worker. On essaie d'abord cette voie, puis on retombe sur le constructeur.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker
+      .getRegistration()
+      .then((registration) => {
+        if (registration) {
+          return registration.showNotification(title, { body, icon: options?.icon, tag: options?.tag })
+        }
+        throw new Error('no-sw')
+      })
+      .catch(() => {
+        try {
+          const n = new Notification(title, { body, icon: options?.icon, tag: options?.tag })
+          window.setTimeout(() => n.close(), 8000)
+        } catch { /* jamais bloquant */ }
+      })
+    return
+  }
+
   try {
     const notification = new Notification(title, {
       body,

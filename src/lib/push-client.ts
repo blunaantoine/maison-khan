@@ -49,7 +49,14 @@ export function getQuickPushState(): PushClientState {
 async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!isPushSupported()) return null
   try {
-    return await navigator.serviceWorker.register('/sw.js')
+    const registration = await navigator.serviceWorker.register('/sw.js')
+    // pushManager.subscribe() échoue (« no active Service Worker ») si le worker
+    // n'est pas encore actif : on attend qu'il le soit (max 8 s).
+    await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ])
+    return registration
   } catch (e) {
     console.error('[push-client] SW non enregistré :', e)
     return null
@@ -91,7 +98,9 @@ export async function subscribeToPush(): Promise<PushClientState> {
     })
   } catch (e) {
     console.error('[push-client] Abonnement push impossible :', e)
-    return 'denied'
+    // « denied » seulement si l'utilisateur a réellement bloqué ; sinon c'est
+    // une erreur technique (service worker, réseau…) et non un refus.
+    return Notification.permission === 'denied' ? 'denied' : 'granted-unsubscribed'
   }
 
   // 3. Enregistrement côté serveur
@@ -166,4 +175,18 @@ export async function checkPushState(): Promise<PushClientState> {
   } catch {
     return 'inactive'
   }
+}
+
+/**
+ * Synchronisation SILENCIEUSE (sans aucune fenêtre) : si l'utilisateur a déjà
+ * autorisé les notifications, on s'assure que CET appareil est bien abonné et
+ * enregistré côté serveur pour son compte. À appeler après chaque connexion.
+ * (Le bandeau de première visite n'obtient que l'autorisation, souvent avant
+ * que le visiteur ait un compte : cette étape finit le travail.)
+ */
+export async function syncPushSubscription(): Promise<PushClientState> {
+  if (!isPushSupported()) return 'unsupported'
+  if (Notification.permission === 'denied') return 'denied'
+  if (Notification.permission !== 'granted') return 'inactive'
+  return subscribeToPush()
 }
