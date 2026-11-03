@@ -12,6 +12,7 @@ import {
 } from '@/lib/notifications/service'
 import { NOTIFICATION_TYPES } from '@/lib/notifications/types'
 import { trackEmailEvent, campaignLabel } from '@/lib/emailoqui'
+import { sendAdminPaymentSms } from '@/lib/sms-alert'
 
 /**
  * MAISON KHAN — Moteur de notifications.
@@ -284,6 +285,8 @@ async function sendAdminPaymentAlert(order: OrderWithItems): Promise<void> {
 
 /** Paiement confirmé → notification admin + reçu de paiement au client (une seule fois). */
 export async function notifyPaymentConfirmed(order: OrderWithItems): Promise<void> {
+  // Alerte SMS au propriétaire (Africa's Talking) — anti-doublon interne, jamais bloquante.
+  await sendAdminPaymentSms(order)
   const alreadySent = await emailAlreadySent(order.id, 'payment_receipt')
   if (alreadySent) {
     // Notification quand même (si le paiement passe par 2 chemins), email non.

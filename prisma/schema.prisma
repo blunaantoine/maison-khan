@@ -391,3 +391,21 @@ model PushCampaign {
 
   @@index([status, scheduledAt])
 }
+
+// Journal des SMS (Africa's Talking) — alerte « Paiement confirmé » au propriétaire.
+// Unique (orderId, type) : anti-doublon atomique, un seul SMS par commande.
+model SmsLog {
+  id               String   @id @default(cuid())
+  orderId          String
+  type             String   // admin_payment_alert
+  status           String   // pending | sent | failed | skipped (config absente)
+  to               String?
+  message          String?
+  error            String?
+  providerResponse String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([orderId, type])
+  @@index([createdAt])
+}
