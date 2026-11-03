@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+# ============================================================
+# MAISON KHAN — Mise à jour + activation Google/Apple (une seule ligne)
+#
+# Usage 1 — déployer les nouveautés ET activer la connexion Google :
+#   cd /var/www/maison-khan && git pull && bash scripts/update.sh ID_CLIENT SECRET_CLIENT
+#
+# Usage 2 — redéployer seulement (sans toucher à Google) :
+#   cd /var/www/maison-khan && git pull && bash scripts/update.sh
+#
+# Usage 3 — activer la connexion Apple (script guidé dédié) :
+#   cd /var/www/maison-khan && bash scripts/enable-apple.sh
+#
+# Le script :
+#   1. Écrit GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET dans .env (si fournis)
+#   2. Installe les nouvelles dépendances (bun install)
+#   3. Génère les clés VAPID des notifications push si absentes
+#   4. Sauvegarde la base + met à jour le schéma (nouvelles tables)
+#   5. Crée le swap anti-crash si absent (le build est gourmand en RAM)
+#   6. Arrête l'app (libère la mémoire — évite le crash pendant le build)
+#   7. Reconstruit l'application (bun run build)
+#   8. Redémarre l'app + pm2 save
+#   9. Vérifie la boutique, le bouton Google, le bouton Apple et le site web
+#
+# Sûr : ne touche ni à la base de données, ni au code.
+# ============================================================
+
+ok()   { echo "✅ $1"; }
+bad()  { echo "❌ $1"; }
+info() { echo "→ $1"; }
+
+echo "═══════════ MISE À JOUR MAISON KHAN ═══════════"
+cd /var/www/maison-khan || { bad "Dossier /var/www/maison-khan introuvable"; exit 1; }
+
+# ── 1. Identifiants Google dans .env (si fournis en arguments) ──
+if [ -n "${1:-}" ] && [ -n "${2:-}" ]; then
+  touch .env
+  # S'assurer que .env se termine par une nouvelle ligne
+  [ -n "$(tail -c 1 .env)" ] && echo >> .env
+  # Écrire chaque variable (remplace l'ancienne valeur, dédoublonne si besoin)
+  for PAIRE in "GOOGLE_CLIENT_ID:$1" "GOOGLE_CLIENT_SECRET:$2"; do
+    VAR="${PAIRE%%:*}"
+    VAL="${PAIRE#*:}"
+    grep -v "^${VAR}=" .env > .env.tmp
+    printf '%s=%s\n' "$VAR" "$VAL" >> .env.tmp
+    mv .env.tmp .env
+  done
+  ok "Connexion Google configurée dans .env"
+else
+  info "Aucun identifiant Google fourni → configuration actuelle conservée"
+fi
+
+# ── 2. Dépendances (nouvelles librairies du code mis à jour) ──
+info "Installation des dépendances (bun install)..."
+if bun install > /tmp/mk-install.log 2>&1; then
+  ok "Dépendances à jour"
+else
+  bad "bun install échoué"
+  info "Détails : tail -20 /tmp/mk-install.log — envoie-les si tu bloques"
+  exit 1
+fi
+
+# ── 3. Clés VAPID des notifications push (générées si absentes) ──
+if ! grep -q '^NEXT_PUBLIC_VAPID_PUBLIC_KEY=..*' .env 2>/dev/null || ! grep -q '^VAPID_PRIVATE_KEY=..*' .env 2>/dev/null; then
+  info "Génération des clés VAPID (notifications push)..."
+  VAPID_OUT=$(bunx web-push generate-vapid-keys 2>/dev/null)
+  VAPID_PUB=$(echo "$VAPID_OUT" | grep -A1 'Public Key:' | tail -1 | tr -d '[:space:]')
+  VAPID_PRIV=$(echo "$VAPID_OUT" | grep -A1 'Private Key:' | tail -1 | tr -d '[:space:]')
+  if [ -n "$VAPID_PUB" ] && [ -n "$VAPID_PRIV" ]; then
+    touch .env
+    [ -n "$(tail -c 1 .env)" ] && echo >> .env
+    grep -v '^NEXT_PUBLIC_VAPID_PUBLIC_KEY=' .env | grep -v '^VAPID_PRIVATE_KEY=' | grep -v '^VAPID_SUBJECT=' > .env.tmp
+    printf '%s\n%s\n%s\n' "NEXT_PUBLIC_VAPID_PUBLIC_KEY=$VAPID_PUB" "VAPID_PRIVATE_KEY=$VAPID_PRIV" "VAPID_SUBJECT=mailto:contact@maison-khan.com" >> .env.tmp
+    mv .env.tmp .env
+    ok "Clés VAPID générées — notifications push opérationnelles"
+  else
+    info "Clés VAPID non générées (les notifications resteront simulées)"
+  fi
+else
+  ok "Clés VAPID déjà présentes (notifications push conservées)"
+fi
+
+# ── 4. Backup de la base + mise à jour du schéma (nouvelles tables) ──
+info "Sauvegarde de la base de données..."
+if [ -f db/custom.db ]; then
+  if command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 db/custom.db ".backup 'db/custom.db.backup'" 2>/dev/null && ok "Base sauvegardée (db/custom.db.backup)"
+  else
+    cp db/custom.db db/custom.db.backup 2>/dev/null && ok "Base sauvegardée (copie simple)"
+  fi
+fi
+info "Mise à jour du schéma de la base (nouvelles tables si besoin)..."
+if bun run db:push > /tmp/mk-dbpush.log 2>&1; then
+  ok "Schéma de la base à jour"
+else
+  bad "Mise à jour du schéma échouée — la base sauvegardée est conservée"
+  info "Détails : tail -20 /tmp/mk-dbpush.log — envoie-les si tu bloques"
+fi
+
+# ── 5. Swap anti-crash pendant le build (créé seulement s'il manque) ──
+if ! swapon --show 2>/dev/null | grep -q .; then
+  if fallocate -l 2G /swapfile 2>/dev/null; then
+    chmod 600 /swapfile
+    mkswap /swapfile >/dev/null 2>&1
+    swapon /swapfile >/dev/null 2>&1
+    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    ok "Swap 2 Go créé (protection mémoire pendant le build)"
+  else
+    info "Swap non créé (pas critique, on continue)"
+  fi
+else
+  ok "Swap déjà présent"
+fi
+
+# ── 6. Construction de la nouvelle version ──
+info "Arrêt de l'app pour libérer la mémoire..."
+pm2 stop maison-khan >/dev/null 2>&1
+info "Construction de la nouvelle version (2 à 4 minutes, patiente sans fermer la page)..."
+if bun run build > /tmp/mk-build.log 2>&1; then
+  ok "Nouvelle version construite"
+else
+  bad "Build échoué — l'ancienne version est relancée"
+  info "Détails de l'erreur : tail -40 /tmp/mk-build.log"
+  pm2 restart maison-khan >/dev/null 2>&1 || pm2 start bun --name maison-khan -- run start >/dev/null 2>&1
+  pm2 save >/dev/null 2>&1
+  exit 1
+fi
+
+# ── 6 bis. .env dans le dossier de production ──
+# Le serveur standalone lit son .env dans .next/standalone/ — sans cette copie,
+# l'app démarre sans base de données ni clé de paiement après le rebuild.
+if [ -f .env ]; then
+  cp .env .next/standalone/.env
+  ok ".env copié dans la version de production"
+else
+  bad ".env introuvable à la racine — l'app démarrera sans configuration !"
+  info "Vérifie : ls -la /var/www/maison-khan/.env"
+fi
+
+# ── 7. Redémarrage de l'application ──
+pm2 restart maison-khan >/dev/null 2>&1
+sleep 5
+if ! curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then
+  info "Processus muet → recréation propre..."
+  pm2 delete maison-khan >/dev/null 2>&1
+  pm2 start bun --name maison-khan -- run start >/dev/null 2>&1
+  sleep 6
+fi
+pm2 save >/dev/null 2>&1 && info "pm2 save OK (l'app redémarrera après un reboot du VPS)"
+
+# ── 8. Vérifications finales ──
+echo ""
+echo "═══════════ RÉSULTAT ═══════════"
+if curl -s -m 5 http://localhost:3000/api/health >/dev/null 2>&1; then
+  ok "APPLICATION — la boutique répond"
+else
+  bad "APPLICATION — ne répond pas"
+  info "Logs à m'envoyer : pm2 logs maison-khan --lines 30 --nostream"
+fi
+
+STATUS=$(curl -s -m 5 http://localhost:3000/api/auth/google/status 2>/dev/null)
+if echo "$STATUS" | grep -q '"configured":true'; then
+  ok "GOOGLE — le bouton « Continuer avec Google » est actif"
+  echo "   ↳ Vérifie dans Google Cloud Console → Identifiants → ton ID client :"
+  echo "     l'URI de redirection autorisée doit être :"
+  echo "     https://shop.maison-khan.com/api/auth/google/callback"
+else
+  info "GOOGLE — pas encore configuré sur ce serveur (bouton masqué)"
+fi
+
+STATUS_APPLE=$(curl -s -m 5 http://localhost:3000/api/auth/apple/status 2>/dev/null)
+if echo "$STATUS_APPLE" | grep -q '"configured":true'; then
+  ok "APPLE — le bouton « Continuer avec Apple » est actif"
+  echo "   ↳ Vérifie dans Apple Developer → ton Services ID → Sign in with Apple :"
+  echo "     le Return URL doit être :"
+  echo "     https://shop.maison-khan.com/api/auth/apple/callback"
+else
+  info "APPLE — pas encore configuré (pour l'activer : bash scripts/enable-apple.sh)"
+fi
+
+if grep -q '^EMAILOQUI_API_KEY=moq_live_..*' .env 2>/dev/null; then
+  ok "EMAILOQUI — le suivi des événements e-mail est actif"
+  if grep -q '^RESEND_WEBHOOK_SECRET=whsec_..*' .env 2>/dev/null; then
+    ok "WEBHOOK RESEND — signatures vérifiées (secret configuré)"
+  else
+    info "WEBHOOK RESEND — RESEND_WEBHOOK_SECRET absente : les événements sont"
+    echo "     acceptés sans vérification. Dashboard Resend → Webhooks :"
+    echo "     URL: https://shop.maison-khan.com/api/webhooks/resend"
+    echo "     Copiez le « signing secret » (whsec_…) dans .env puis : pm2 restart maison-khan"
+  fi
+fi
+
+CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://shop.maison-khan.com 2>/dev/null)
+CODE=${CODE:-000}
+case "$CODE" in
+  200|301|302|307|308)
+    ok "SITE WEB — https://shop.maison-khan.com répond (HTTP $CODE)"
+    echo ""
+    echo "🎉 MISE À JOUR TERMINÉE ! Rafraîchis ton navigateur (Ctrl+F5)"
+    ;;
+  *)
+    bad "SITE WEB — shop.maison-khan.com : HTTP $CODE (ou pas de réponse)"
+    info "Envoie-moi une capture d'écran de tout cet écran"
+    ;;
+esac
+echo "═══════════ FIN ═══════════"

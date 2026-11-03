@@ -1,0 +1,32 @@
+# ─── Secrets & environnement (JAMAIS dans Git) ───
+.env
+.env.*
+!.env.example
+
+# ─── Dépendances ───
+node_modules/
+bun_modules/
+
+# ─── Build & caches ───
+.next/
+out/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Base de données locale (données clients) ───
+db/
+*.db
+*.db.backup
+*.sqlite
+
+# ─── Journaux & fichiers locaux ───
+*.log
+logs/
+worklog.md
+.zscripts/dev.pid
+.DS_Store
+
+# ─── Outils agent locaux ───
+skills/
+agent-ctx/

@@ -1,0 +1,235 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/secure-compare'
+import { db } from '@/lib/db'
+import { createHash } from 'crypto'
+import { notifyPaymentConfirmed, notifyPaymentFailed } from '@/lib/notify'
+
+const PAYDUNYA_MASTER_KEY  = process.env.PAYDUNYA_MASTER_KEY  || ''
+
+async function decrementStock(orderId: string, orderNumber: string) {
+  try {
+    const orderItems = await db.orderItem.findMany({ where: { orderId } })
+
+    for (const item of orderItems) {
+      if (!item.productId || !item.colorName) continue
+
+      const productColor = await db.productColor.findFirst({
+        where: { productId: item.productId, colorName: item.colorName }
+      })
+      if (!productColor) continue
+
+      const sizes = JSON.parse(productColor.sizes) as { size: string; price: number; stock: number }[]
+      const updatedSizes = sizes.map(s => {
+        if (s.size === item.size) {
+          const newStock = Math.max(0, s.stock - item.quantity)
+          return { ...s, stock: newStock }
+        }
+        return s
+      })
+
+      await db.productColor.update({
+        where: { id: productColor.id },
+        data: { sizes: JSON.stringify(updatedSizes) }
+      })
+    }
+  } catch (e) {
+    console.error('[Stock]  Erreur décrémentation:', e)
+  }
+}
+
+async function releaseStock(orderId: string, orderNumber: string) {
+  try {
+    const orderItems = await db.orderItem.findMany({ where: { orderId } })
+
+    for (const item of orderItems) {
+      if (!item.productId || !item.colorName) continue
+
+      const productColor = await db.productColor.findFirst({
+        where: { productId: item.productId, colorName: item.colorName }
+      })
+      if (!productColor) continue
+
+      const sizes = JSON.parse(productColor.sizes) as { size: string; price: number; stock: number }[]
+      const updatedSizes = sizes.map(s => {
+        if (s.size === item.size) {
+          const newStock = s.stock + item.quantity
+          return { ...s, stock: newStock }
+        }
+        return s
+      })
+
+      await db.productColor.update({
+        where: { id: productColor.id },
+        data: { sizes: JSON.stringify(updatedSizes) }
+      })
+    }
+  } catch (e) {
+    console.error('[Stock]  Erreur libération stock:', e)
+  }
+}
+
+export async function POST(request: NextRequest) {
+
+  try {
+    const contentType = request.headers.get('content-type') || ''
+    let body: any = {}
+
+    if (contentType.includes('application/json')) {
+      body = await request.json()
+    } else {
+      const text = await request.text()
+      console.log('[PayDunya Callback] Raw body:', text)
+      const params = new URLSearchParams(text)
+      params.forEach((value, key) => { body[key] = value })
+    }
+
+    const hash    = body?.['data[hash]']
+    const token   = body?.['data[invoice][token]']
+    const status  = body?.['data[status]']
+    const orderId = body?.['data[custom_data][order_id]']
+
+    const expectedHash = createHash('sha512').update(PAYDUNYA_MASTER_KEY).digest('hex')
+    // Sans clé maître configurée, le hash attendu serait sha512('') — public :
+    // n'importe qui pourrait forger un callback. On refuse dans ce cas.
+    if (!PAYDUNYA_MASTER_KEY || !safeEqual(hash, expectedHash)) {
+      console.warn('[Callback] Hash invalide — requête non PayDunya')
+      return NextResponse.json({ received: false }, { status: 403 })
+    }
+
+    if (!token) {
+      console.warn('[PayDunya Callback] Token manquant')
+      return NextResponse.json({ received: true, error: 'token manquant' })
+    }
+
+    // Le statut de l'IPN (signé par le hash sha512 de la master key) est la
+    // source de vérité. L'ancien code faisait un fetch de confirmation chez
+    // PayDunya dont le résultat n'était jamais utilisé — requête morte qui
+    // pouvait pendre le callback indéfiniment (IPN en timeout chez PayDunya).
+    const payment = await db.payment.findFirst({
+      where: { transactionId: token },
+      include: { order: true }
+    })
+
+    if (!payment) {
+      console.warn('[PayDunya Callback] Payment non trouvé pour token:', token)
+      if (orderId && status === 'completed') {
+        await db.order.update({
+          where: { id: orderId },
+          data: { paymentStatus: 'paid', status: 'paid' }
+        })
+        await decrementStock(orderId, orderId)
+        const paidOrder = await db.order.findUnique({ where: { id: orderId }, include: { items: true } })
+        if (paidOrder) await notifyPaymentConfirmed(paidOrder)
+      }
+      return NextResponse.json({ received: true })
+    }
+
+    if (payment.status === 'completed') {
+      return NextResponse.json({ received: true, status: 'already_processed' })
+    }
+
+    let newStatus = 'pending'
+    switch (status) {
+      case 'completed': newStatus = 'completed'; break
+      case 'cancelled': newStatus = 'cancelled'; break
+      case 'failed': newStatus = 'failed'; break
+    }
+
+    await db.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: newStatus,
+        paidAt: status === 'completed' ? new Date() : null,
+        metadata: JSON.stringify({ ...body, callbackAt: new Date().toISOString() })
+      }
+    })
+
+    if (status === 'completed') {
+
+      await db.$transaction(async (tx) => {
+
+        const orderItems = await tx.orderItem.findMany({
+          where: { orderId: payment.orderId }
+        })
+
+        for (const item of orderItems) {
+          if (!item.productId || !item.colorName) continue
+
+          const productColor = await tx.productColor.findFirst({
+            where: { productId: item.productId, colorName: item.colorName }
+          })
+          if (!productColor) continue
+
+          const sizes = JSON.parse(productColor.sizes) as { size: string; price: number; stock: number }[]
+          const sizeInfo = sizes.find(s => s.size === item.size)
+
+          if (!sizeInfo) continue
+          // Le client a DÉJÀ payé : on ne bloque jamais l'enregistrement du
+          // paiement pour un stock insuffisant (sinon la commande restait
+          // « en attente » alors que l'argent est encaissé). Le stock est
+          // simplement ramené à 0 et l'admin est alerté dans les logs.
+          if (sizeInfo.stock < item.quantity) {
+            console.warn(`[PayDunya Callback] Stock insuffisant pour ${item.productName} taille ${item.size} — commande payée quand même`)
+          }
+
+          const updatedSizes = sizes.map(s =>
+            s.size === item.size
+              ? { ...s, stock: Math.max(0, s.stock - item.quantity) }
+              : s
+          )
+
+          await tx.productColor.update({
+            where: { id: productColor.id },
+            data: { sizes: JSON.stringify(updatedSizes) }
+          })
+        }
+
+        await tx.order.update({
+          where: { id: payment.orderId },
+          data: { paymentStatus: 'paid', status: 'paid' }
+        })
+      })
+
+      // Notification admin + reçu de paiement au client — APRÈS l'enregistrement
+      // du paiement (ordre corrigé : avant, un échec de la transaction laissait
+      // un reçu envoyé pour une commande jamais marquée payée).
+      const paidOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (paidOrder) await notifyPaymentConfirmed(paidOrder)
+
+    } else if (status === 'cancelled' || status === 'failed') {
+
+      // Statut de commande dans le vocabulaire de l'app :
+      // 'payment_failed' (badge rouge + bouton « Réessayer le paiement » du
+      // tableau de bord client) ou 'cancelled'. L'ancien code écrivait 'failed',
+      // statut inconnu de l'interface → aucun badge ni bouton affiché.
+      await db.order.update({
+        where: { id: payment.orderId },
+        data: {
+          paymentStatus: status,
+          status: status === 'failed' ? 'payment_failed' : 'cancelled',
+        },
+      })
+
+      // Notification admin (échec/annulation)
+      const failedOrder = await db.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true },
+      })
+      if (failedOrder) await notifyPaymentFailed(failedOrder, status === 'failed' ? 'failed' : 'cancelled')
+
+    }
+
+    return NextResponse.json({ received: true, status: newStatus })
+
+  } catch (error) {
+    console.error('[PayDunya Callback] Erreur:', error)
+    return NextResponse.json({ received: true })
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ endpoint: 'PayDunya IPN Callback', status: 'active' })
+}

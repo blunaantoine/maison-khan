@@ -1,0 +1,597 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { safeNavigate } from '@/lib/safe-redirect';
+import {
+  ChevronLeft,
+  ShoppingBag,
+  Heart,
+  Share2,
+  Instagram,
+  Check,
+  MessageCircle,
+  Truck,
+  Shield,
+  ChevronRight,
+} from 'lucide-react';
+import type { Product, ProductColor } from '@/lib/product';
+import { formatPrice, getColorHex } from '@/lib/product';
+
+interface ProductDetailProps {
+  product: Product;
+}
+
+export default function ProductDetail({ product }: ProductDetailProps) {
+  const [selectedColorIndex, setSelectedColorIndex] = useState(0);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  // Taille par défaut dérivée du produit dès le montage (sans effet)
+  const [selectedSize, setSelectedSize] = useState<string | null>(
+    product.sizes?.length ? product.sizes[0] : null
+  );
+  const [quantity, setQuantity] = useState(1);
+  const [copied, setCopied] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [addedToCart, setAddedToCart] = useState(false);
+
+  const selectedColor: ProductColor | undefined = product.colors?.[selectedColorIndex];
+  const colorImages = (selectedColor?.images ?? []).filter(Boolean)
+  const currentImages = colorImages.length ? colorImages : [product.image || ''];
+
+  // Reset image index quand on change de couleur — ajustement pendant le rendu
+  // (pattern React officiel, sans effet ni rendus en cascade)
+  const [prevColorIndex, setPrevColorIndex] = useState(selectedColorIndex);
+  if (prevColorIndex !== selectedColorIndex) {
+    setPrevColorIndex(selectedColorIndex);
+    setSelectedImageIndex(0);
+  }
+
+  // Récupérer le prix de la taille sélectionnée pour la couleur courante
+  const getCurrentPrice = (): number => {
+    if (!selectedColor?.sizes?.length) return product.minPrice || 0;
+    const sizeInfo = selectedColor.sizes.find((s) => s.size === selectedSize);
+    if (sizeInfo?.price && sizeInfo.price > 0) return sizeInfo.price;
+    return product.minPrice || 0;
+  };
+
+  const getCurrentStock = (): number => {
+    if (!selectedColor?.sizes?.length) return product.totalStock || 0;
+    const sizeInfo = selectedColor.sizes.find((s) => s.size === selectedSize);
+    return sizeInfo?.stock || 0;
+  };
+
+  const currentPrice = getCurrentPrice();
+  const currentStock = getCurrentStock();
+
+  // Produit entièrement épuisé (toutes couleurs/tailles à 0) — ou sélection
+  // actuelle sans stock. Dans ce cas les boutons d'achat en ligne disparaissent
+  // totalement pour ne laisser que « Commander via WhatsApp » (bien visible).
+  const isProductEpuise = (product.totalStock || 0) <= 0;
+  const isEpuise = isProductEpuise || currentStock === 0;
+
+  // URL de partage
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const shareText = `Découvrez ${product.name} sur Maison Khan`;
+  const shareImage = currentImages[selectedImageIndex] || product.image;
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Copie impossible:', err);
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    const text = `${shareText}\n\n${currentPrice > 0 ? 'Prix : ' + formatPrice(currentPrice) : ''}\n${shareUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  // Instagram : pas d'URL de partage web universelle — on ouvre le profil
+  // officiel de la maison (même lien que le footer) pour suivre et commander
+  // en message privé.
+  const INSTAGRAM_URL = 'https://www.instagram.com/maisonkhanofficial?stkn=cHE3YWU4b28zOGxq';
+  const handleShareInstagram = () => {
+    window.open(INSTAGRAM_URL, '_blank');
+  };
+
+  const handleAddToCart = () => {
+    if (!selectedSize) return;
+    // Save to localStorage for the main page cart
+    const cartItem = {
+      id: product.id,
+      name: product.name,
+      price: currentPrice,
+      size: selectedSize,
+      color: selectedColor?.colorValue || '',
+      colorName: selectedColor?.colorName || '',
+      qty: quantity,
+      image: currentImages[selectedImageIndex] || product.image,
+    };
+    const existing = JSON.parse(localStorage.getItem('mk_cart') || '[]');
+    const idx = existing.findIndex(
+      (i: typeof cartItem) => i.id === cartItem.id && i.size === cartItem.size && i.color === cartItem.color
+    );
+    if (idx >= 0) {
+      existing[idx].qty += cartItem.qty;
+    } else {
+      existing.push(cartItem);
+    }
+    localStorage.setItem('mk_cart', JSON.stringify(existing));
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 3000);
+  };
+
+  const handleDirectOrder = () => {
+    if (!selectedSize || currentStock === 0 || currentPrice === 0) return;
+    // Save direct order to localStorage and redirect to home checkout
+    const directOrder = {
+      product: {
+        id: product.id,
+        name: product.name,
+        image: currentImages[selectedImageIndex] || product.image,
+      },
+      size: selectedSize,
+      colorName: selectedColor?.colorName || '',
+      colorValue: selectedColor?.colorValue || '',
+      price: currentPrice,
+      quantity,
+    };
+    localStorage.setItem('mk_direct_order', JSON.stringify(directOrder));
+    safeNavigate('/?checkout=1');
+  };
+
+  const handleWhatsAppOrder = () => {
+    // Numéro officiel de la maison (même numéro que le reste du site)
+    const phone = '22870166767';
+    const lines = [
+      'Bonjour Maison Khan, je souhaite commander :',
+      '',
+      isEpuise ? '⚠️ Produit actuellement épuisé — je souhaite être informé(e) du réapprovisionnement :' : null,
+      `📦 ${product.name}`,
+      selectedColor ? `🎨 Couleur : ${selectedColor.colorName}` : null,
+      selectedSize ? `📏 Taille : ${selectedSize}` : null,
+      `🔢 Quantité : ${quantity}`,
+      currentPrice > 0 ? `💰 Prix unitaire : ${formatPrice(currentPrice)}` : null,
+      '',
+      shareUrl
+    ].filter((line): line is string => line !== null)
+    const text = lines.join('\n')
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  // Navigation images
+  const nextImage = () => {
+    setSelectedImageIndex((prev) => (prev + 1) % currentImages.length);
+  };
+  const prevImage = () => {
+    setSelectedImageIndex((prev) => (prev - 1 + currentImages.length) % currentImages.length);
+  };
+
+  const genreLabel =
+    product.genre === 'femme' ? 'Femme' : product.genre === 'homme' ? 'Homme' : 'Mixte';
+
+  const stockLabel =
+    currentStock > 10
+      ? 'En stock'
+      : currentStock > 0
+      ? `Plus que ${currentStock} en stock`
+      : 'Épuisé';
+  const stockClass =
+    currentStock > 10
+      ? 'text-green-700'
+      : currentStock > 0
+      ? 'text-amber-700'
+      : 'text-red-700';
+
+  return (
+    <div className="min-h-screen bg-[#F8F6F3] text-[#0A0A0A]">
+      {/* Breadcrumb */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-xs tracking-widest uppercase text-[#6B6560] hover:text-[#0A0A0A] transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Retour à la boutique
+        </Link>
+      </div>
+
+      {/* Breadcrumb path */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6">
+        <nav className="flex items-center gap-2 text-xs text-[#9C9A92] tracking-wider">
+          <Link href="/" className="hover:text-[#9C7C5C] transition-colors">
+            Accueil
+          </Link>
+          <ChevronRight className="w-3 h-3" />
+          <span className="uppercase">{product.category}</span>
+          {product.subCategory && (
+            <>
+              <ChevronRight className="w-3 h-3" />
+              <span className="uppercase">{product.subCategory}</span>
+            </>
+          )}
+        </nav>
+      </div>
+
+      {/* Layout principal */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16">
+          {/* === COLONNE GAUCHE : GALERIE D'IMAGES === */}
+          <div className="lg:sticky lg:top-8 lg:self-start">
+            <div className="flex flex-col-reverse md:flex-row gap-4">
+              {/* Thumbnails (vertical sur desktop, horizontal sur mobile) */}
+              {currentImages.length > 1 && (
+                <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-visible md:max-h-[600px] md:overflow-y-auto">
+                  {currentImages.map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedImageIndex(idx)}
+                      className={`relative flex-shrink-0 w-20 h-20 md:w-24 md:h-24 overflow-hidden border-2 transition-all ${
+                        selectedImageIndex === idx
+                          ? 'border-[#9C7C5C]'
+                          : 'border-[#E5E0DA] hover:border-[#9C7C5C]/50'
+                      }`}
+                    >
+                      <img
+                        src={img}
+                        alt={`${product.name} - vue ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Image principale */}
+              <div className="flex-1 relative aspect-[4/5] bg-[#EDE8E1] overflow-hidden group">
+                {currentImages[selectedImageIndex] ? (
+                  <img
+                    src={currentImages[selectedImageIndex]}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[#9C9A92]">
+                    Pas d'image
+                  </div>
+                )}
+
+                {/* Badges */}
+                <div className="absolute top-4 left-4 flex flex-col gap-2">
+                  {product.isNew && (
+                    <span className="bg-[#0A0A0A] text-[#F8F6F3] text-[10px] tracking-widest uppercase px-3 py-1">
+                      Nouveauté
+                    </span>
+                  )}
+                  {product.isBestSeller && (
+                    <span className="bg-[#9C7C5C] text-[#F8F6F3] text-[10px] tracking-widest uppercase px-3 py-1">
+                      Best-seller
+                    </span>
+                  )}
+                </div>
+
+                {/* Flèches navigation */}
+                {currentImages.length > 1 && (
+                  <>
+                    <button
+                      onClick={prevImage}
+                      aria-label="Image précédente"
+                      className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#F8F6F3]/80 backdrop-blur-sm flex items-center justify-center hover:bg-[#F8F6F3] transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={nextImage}
+                      aria-label="Image suivante"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#F8F6F3]/80 backdrop-blur-sm flex items-center justify-center hover:bg-[#F8F6F3] transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+
+                    {/* Compteur images */}
+                    <div className="absolute bottom-4 right-4 bg-[#0A0A0A]/70 text-[#F8F6F3] text-xs px-3 py-1 tracking-wider">
+                      {selectedImageIndex + 1} / {currentImages.length}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* === COLONNE DROITE : INFOS PRODUIT === */}
+          <div className="flex flex-col">
+            {/* Eyebrow */}
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-[10px] tracking-[0.2em] uppercase text-[#9C7C5C]">
+                {product.subCategory || product.category}
+              </span>
+              <span className="text-[#E5E0DA]">|</span>
+              <span className="text-[10px] tracking-[0.2em] uppercase text-[#6B6560]">
+                {genreLabel}
+              </span>
+            </div>
+
+            {/* Titre */}
+            <h1
+              className="font-display text-4xl md:text-5xl lg:text-6xl font-light leading-tight mb-4"
+              style={{ fontFamily: "'Cormorant Garamond', serif" }}
+            >
+              {product.name}
+            </h1>
+
+            {/* Prix + Stock */}
+            <div className="flex items-baseline gap-4 mb-6 pb-6 border-b border-[#E5E0DA]">
+              {currentPrice > 0 ? (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs text-[#6B6560] uppercase tracking-wider">
+                    {product.colors?.length > 1 || product.sizes?.length > 1
+                      ? 'À partir de'
+                      : 'Prix'}
+                  </span>
+                  <span className="text-3xl font-light tracking-wide">
+                    {formatPrice(currentPrice)}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-xl text-[#6B6560] italic">Prix sur demande</span>
+              )}
+              <span className={`text-xs ml-auto uppercase tracking-wider ${stockClass}`}>
+                {stockLabel}
+              </span>
+            </div>
+
+            {/* Description */}
+            {product.description && (
+              <div className="mb-8">
+                <p className="text-[#6B6560] leading-relaxed text-sm md:text-base whitespace-pre-wrap">
+                  {product.description}
+                </p>
+              </div>
+            )}
+
+            {/* === SÉLECTEUR DE COULEUR === */}
+            {product.colors?.length > 0 && (
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs tracking-widest uppercase text-[#0A0A0A]">
+                    Couleur
+                  </label>
+                  <span className="text-xs text-[#6B6560] italic">
+                    {selectedColor?.colorName}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {product.colors.map((color, idx) => (
+                    <button
+                      key={color.id}
+                      onClick={() => setSelectedColorIndex(idx)}
+                      aria-label={color.colorName}
+                      className={`relative w-12 h-12 rounded-full border-2 transition-all ${
+                        selectedColorIndex === idx
+                          ? 'border-[#0A0A0A] scale-110'
+                          : 'border-[#E5E0DA] hover:border-[#9C7C5C]'
+                      }`}
+                      style={{ backgroundColor: getColorHex(color.colorValue) }}
+                      title={color.colorName}
+                    >
+                      {selectedColorIndex === idx && (
+                        <Check className="absolute inset-0 m-auto w-4 h-4 text-white drop-shadow-md" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* === SÉLECTEUR DE TAILLE === */}
+            {product.sizes?.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs tracking-widest uppercase text-[#0A0A0A]">
+                    Taille
+                  </label>
+                  <span className="text-xs text-[#9C7C5C] underline cursor-pointer">
+                    Guide des tailles
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {product.sizes.map((size) => {
+                    const sizeInfo = selectedColor?.sizes?.find((s) => s.size === size);
+                    const isAvailable = !sizeInfo || sizeInfo.stock > 0;
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => setSelectedSize(size)}
+                        disabled={!isAvailable}
+                        className={`min-w-[3rem] h-12 px-3 border text-sm tracking-wider transition-all ${
+                          selectedSize === size
+                            ? 'border-[#0A0A0A] bg-[#0A0A0A] text-[#F8F6F3]'
+                            : isAvailable
+                            ? 'border-[#E5E0DA] hover:border-[#0A0A0A]'
+                            : 'border-[#E5E0DA] text-[#9C9A92] line-through cursor-not-allowed'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* === QUANTITÉ === */}
+            {!isEpuise && (
+            <div className="mb-8">
+              <label className="text-xs tracking-widest uppercase text-[#0A0A0A] mb-3 block">
+                Quantité
+              </label>
+              <div className="inline-flex items-center border border-[#E5E0DA]">
+                <button
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  className="w-12 h-12 text-lg hover:bg-[#EDE8E1] transition-colors"
+                  aria-label="Diminuer"
+                >
+                  −
+                </button>
+                <span className="w-16 text-center text-lg">{quantity}</span>
+                <button
+                  onClick={() => setQuantity((q) => Math.min(currentStock || 99, q + 1))}
+                  className="w-12 h-12 text-lg hover:bg-[#EDE8E1] transition-colors"
+                  aria-label="Augmenter"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            )}
+
+            {/* === BOUTONS D'ACTION === */}
+            {/* Produit/sélection épuisé(e) : les boutons d'achat en ligne
+                disparaissent complètement — seul « Commander via WhatsApp »
+                reste affiché, en vert et bien visible, sans encadré rouge
+                explicatif (retiré à la demande du propriétaire). */}
+            <div className="flex flex-col gap-3 mb-8">
+              {isEpuise ? (
+                <>
+                  <button
+                    onClick={handleWhatsAppOrder}
+                    className="w-full py-4 bg-[#25D366] text-white text-xs tracking-[0.2em] uppercase hover:bg-[#1FB857] transition-colors flex items-center justify-center gap-3 shadow-lg shadow-[#25D366]/25"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Commander via WhatsApp
+                  </button>
+                  <p className="text-[11px] text-[#9C9A92] text-center tracking-wide">
+                    Réponse directe de la maison — même pour un produit épuisé.
+                  </p>
+                </>
+              ) : (
+                <>
+              <button
+                onClick={handleAddToCart}
+                disabled={!selectedSize || currentStock === 0}
+                className="w-full py-4 bg-[#0A0A0A] text-[#F8F6F3] text-xs tracking-[0.2em] uppercase hover:bg-[#2C2C2A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              >
+                {addedToCart ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Ajouté au panier
+                  </>
+                ) : (
+                  <>
+                    <ShoppingBag className="w-4 h-4" />
+                    Ajouter au panier
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleDirectOrder}
+                disabled={!selectedSize || currentStock === 0 || currentPrice === 0}
+                className="w-full py-4 bg-[#9C7C5C] text-[#F8F6F3] text-xs tracking-[0.2em] uppercase hover:bg-[#8B6B4B] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                Commander directement
+              </button>
+
+              <button
+                onClick={handleWhatsAppOrder}
+                className="w-full py-4 border border-[#0A0A0A] text-[#0A0A0A] text-xs tracking-[0.2em] uppercase hover:bg-[#0A0A0A] hover:text-[#F8F6F3] transition-colors flex items-center justify-center gap-3"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Commander via WhatsApp
+              </button>
+                </>
+              )}
+            </div>
+
+            {/* === PARTAGE === */}
+            <div className="mb-8 pb-8 border-b border-[#E5E0DA]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs tracking-widest uppercase text-[#6B6560]">
+                  Partager ce produit
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleShareWhatsApp}
+                    aria-label="Partager sur WhatsApp"
+                    className="w-10 h-10 flex items-center justify-center border border-[#E5E0DA] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/10 transition-all"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleShareInstagram}
+                    aria-label="Découvrir notre Instagram"
+                    className="w-10 h-10 flex items-center justify-center border border-[#E5E0DA] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/10 transition-all"
+                  >
+                    <Instagram className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowShareMenu(!showShareMenu)}
+                    aria-label="Plus d'options"
+                    className="w-10 h-10 flex items-center justify-center border border-[#E5E0DA] hover:border-[#9C7C5C] hover:bg-[#9C7C5C]/10 transition-all"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Lien partageable */}
+              {showShareMenu && (
+                <div className="mt-4 p-4 bg-[#EDE8E1]/50 border border-[#E5E0DA]">
+                  <p className="text-xs text-[#6B6560] mb-2 uppercase tracking-wider">
+                    Lien direct du produit
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={shareUrl}
+                      className="flex-1 px-3 py-2 text-xs bg-white border border-[#E5E0DA] text-[#6B6560] truncate"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                    <button
+                      onClick={handleCopyLink}
+                      className="px-3 py-2 bg-[#0A0A0A] text-[#F8F6F3] text-xs uppercase tracking-wider hover:bg-[#2C2C2A]"
+                    >
+                      {copied ? 'Copié !' : 'Copier'}
+                    </button>
+                  </div>
+                  {copied && (
+                    <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Lien copié dans le presse-papier
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* === AVANTAGES === */}
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div className="flex flex-col items-center gap-2 p-3">
+                <Truck className="w-6 h-6 text-[#9C7C5C]" />
+                <p className="text-[10px] tracking-wider uppercase text-[#6B6560]">
+                  Livraison rapide
+                </p>
+              </div>
+              <div className="flex flex-col items-center gap-2 p-3">
+                <Shield className="w-6 h-6 text-[#9C7C5C]" />
+                <p className="text-[10px] tracking-wider uppercase text-[#6B6560]">
+                  Paiement sécurisé
+                </p>
+              </div>
+            </div>
+
+            {/* Bouton wishlist (décoratif) */}
+            <button className="mt-6 self-start inline-flex items-center gap-2 text-xs tracking-widest uppercase text-[#6B6560] hover:text-[#0A0A0A] transition-colors">
+              <Heart className="w-4 h-4" />
+              Ajouter aux favoris
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,512 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { notifyOrderCreated } from '@/lib/notify'
+
+// Generate unique order number with timestamp to avoid collisions
+const generateOrderNumber = async () => {
+  const year = new Date().getFullYear()
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const timePart = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0')
+  const rand = Math.floor(Math.random() * 100).toString().padStart(2, '0')
+  return `MK-${year}${month}${day}-${timePart}${rand}`
+}
+
+// GET - Get orders
+export async function GET(request: NextRequest) {
+  try {
+    const userId = request.headers.get('x-auth-user-id')
+    const role = request.headers.get('x-auth-role')
+    const isAdmin = role === 'admin' || role === 'manager'
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get('status')
+    const orderId = searchParams.get('id')
+
+    // Get single order
+    if (orderId) {
+      const order = await db.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: { id: true, name: true, image: true }
+              }
+            }
+          },
+          payments: true
+        }
+      })
+
+      if (!order) {
+        return NextResponse.json(
+          { error: 'Commande non trouvée' },
+          { status: 404 }
+        )
+      }
+
+      // Check ownership (unless admin)
+      if (!isAdmin && order.userId !== userId) {
+        return NextResponse.json(
+          { error: 'Non autorisé' },
+          { status: 403 }
+        )
+      }
+
+      return NextResponse.json({ order })
+    }
+
+    // List orders
+    let where: Record<string, unknown> = {}
+    
+    if (!isAdmin && userId) {
+      // Trouver l'email de l'utilisateur connecté
+      const currentUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      })
+      
+      // Afficher les commandes liées AU COMPTE ou passées avec LE MÊME EMAIL (sans compte)
+      if (currentUser?.email) {
+        where = {
+          OR: [
+            { userId: userId },
+            { customerEmail: currentUser.email }
+          ]
+        }
+      } else {
+        where.userId = userId
+      }
+    }
+    
+    if (status) {
+      where.status = status
+    }
+
+    const orders = await db.order.findMany({
+      where,
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true, image: true }
+            }
+          }
+        },
+        payments: {
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            paymentMethod: true,
+            createdAt: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    })
+
+    // Relier automatiquement les commandes orphelines (sans userId) au compte du client
+    if (!isAdmin && userId) {
+      const orphanOrders = orders.filter(o => !o.userId)
+      if (orphanOrders.length > 0) {
+        await db.order.updateMany({
+          where: {
+            id: { in: orphanOrders.map(o => o.id) },
+            userId: null
+          },
+          data: { userId: userId }
+        })
+      }
+    }
+
+    return NextResponse.json({ orders })
+  } catch (error) {
+    console.error('Get orders error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la récupération des commandes' },
+      { status: 500 }
+    )
+  }
+}
+
+// POST - Create order
+// export async function POST(request: NextRequest) {
+//   try {
+//     const userId = request.headers.get('x-user-id')
+//     const validUserId = userId && userId !== '' ? userId : null
+//     const body = await request.json()
+
+// 
+//     const { 
+//       items, 
+//       customerInfo, 
+//       shippingAddress, 
+//       paymentMethod,
+//       subtotal,
+//       shippingCost,
+//       total
+//     } = body
+
+//     if (!items || items.length === 0) {
+//       return NextResponse.json(
+//         { error: 'Le panier est vide' },
+//         { status: 400 }
+//       )
+//     }
+
+//     if (!customerInfo?.email || !customerInfo?.phone) {
+//       return NextResponse.json(
+//         { error: 'Informations de contact requises' },
+//         { status: 400 }
+//       )
+//     }
+
+//     // Generate order number
+//     const orderNumber = await generateOrderNumber()
+
+//     // Create order
+//     const order = await db.order.create({
+//       data: {
+//         orderNumber,
+//         userId: validUserId || null,
+//         customerEmail: customerInfo.email,
+//         customerPhone: customerInfo.phone,
+//         customerFirstName: customerInfo.firstName || null,
+//         customerLastName: customerInfo.lastName || null,
+//         shippingAddress: shippingAddress?.address || null,
+//         shippingCity: shippingAddress?.city || null,
+//         shippingCountry: shippingAddress?.country || 'Togo',
+//         shippingPhone: shippingAddress?.phone || customerInfo.phone,
+//         // shippingLatitude: shippingAddress?.latitude || null,
+//         // shippingLongitude: shippingAddress?.longitude || null,
+
+//         shippingLatitude: shippingAddress?.latitude ? parseFloat(shippingAddress.latitude.toString()) : null,
+//         shippingLongitude: shippingAddress?.longitude ? parseFloat(shippingAddress.longitude.toString()) : null,
+
+//         subtotal: subtotal || 0,
+//         shippingCost: shippingCost || 0,
+//         discount: 0,
+//         total: total || 0,
+//         status: 'pending',
+//         paymentStatus: 'pending',
+//         paymentMethod: paymentMethod || null,
+//         items: {
+//           create: items.map((item: Record<string, unknown>) => ({
+//             productId: item.productId as string || null,
+//             productName: item.productName as string || item.name as string,
+//             productImage: item.productImage as string || item.image as string || null,
+//             colorName: item.colorName as string || null,
+//             size: item.size as string,
+//             quantity: item.quantity as number,
+//             unitPrice: item.unitPrice as number || item.price as number,
+//             totalPrice: (item.unitPrice as number || item.price as number) * (item.quantity as number)
+//           }
+        
+//         ))
+//         }
+//       },
+//       include: {
+//         items: true
+//       }
+//     })
+
+//     // Clear cart after order creation
+//     if (userId) {
+//       await db.cartItem.deleteMany({ where: { userId } })
+//     }
+
+//     return NextResponse.json({
+//       message: 'Commande créée avec succès',
+//       order
+//     })
+//   } catch (error) {
+//     console.error('Create order error:', error)
+//     console.error('Erreur complète:', error)
+//     return NextResponse.json(
+//       { error: 'Erreur lors de la création de la commande' },
+//       { status: 500 }
+//     )
+//   }
+// }
+
+export async function POST(request: NextRequest) {
+  try {
+    const userId = request.headers.get('x-auth-user-id')
+    const validUserId = userId && userId !== '' ? userId : null  // <-- AJOUTEZ CETTE LIGNE
+    
+    const body = await request.json()
+    
+    const { 
+      items, 
+      customerInfo, 
+      shippingAddress, 
+      paymentMethod,
+      subtotal,
+      shippingCost,
+      total
+    } = body
+
+    if (!items || items.length === 0) {
+      return NextResponse.json(
+        { error: 'Le panier est vide' },
+        { status: 400 }
+      )
+    }
+
+    if (!customerInfo?.email || !customerInfo?.phone) {
+      return NextResponse.json(
+        { error: 'Informations de contact requises' },
+        { status: 400 }
+      )
+    }
+
+    // ── Prix recalculés CÔTÉ SERVEUR ──
+    // Les montants envoyés par le navigateur (subtotal, total, unitPrice) ne
+    // sont jamais crus : un client pouvait sinon payer 10 FCFA un article à
+    // 50 000 FCFA. On relit le prix réel en base (produit + couleur + taille).
+    if (!Array.isArray(items) || items.length > 50) {
+      return NextResponse.json({ error: 'Panier invalide' }, { status: 400 })
+    }
+    const pricedItems: Array<{ item: Record<string, unknown>; unitPrice: number; quantity: number }> = []
+    for (const raw of items as Record<string, unknown>[]) {
+      const quantity = Number(raw.quantity)
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+        return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
+      }
+      const productId = typeof raw.productId === 'string' ? raw.productId : null
+      const colorName = typeof raw.colorName === 'string' && raw.colorName ? raw.colorName : null
+      if (!productId) {
+        return NextResponse.json({ error: 'Article invalide dans le panier' }, { status: 400 })
+      }
+      const colors = await db.productColor.findMany({
+        where: { productId, product: { isActive: true }, ...(colorName ? { colorName } : {}) },
+        select: { sizes: true },
+      })
+      let unitPrice = NaN
+      for (const color of colors) {
+        try {
+          const sizes = JSON.parse(color.sizes || '[]') as { size: string; price: number }[]
+          const found = sizes.find((sz) => String(sz.size) === String(raw.size))
+          if (found) { unitPrice = Number(found.price); break }
+        } catch { /* couleur illisible : on passe à la suivante */ }
+      }
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        return NextResponse.json({ error: 'Article ou prix introuvable — rafraîchissez votre panier' }, { status: 400 })
+      }
+      pricedItems.push({ item: raw, unitPrice, quantity })
+    }
+    const serverSubtotal = pricedItems.reduce((sum, p) => sum + p.unitPrice * p.quantity, 0)
+    // La livraison est gratuite côté boutique (shippingCost = 0 partout dans le checkout).
+    const serverShipping = 0
+    const serverTotal = serverSubtotal + serverShipping
+
+    // Create order with retry on duplicate orderNumber (P2002)
+    let order
+    const maxRetries = 3
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const orderNumber = await generateOrderNumber()
+      try {
+        order = await db.order.create({
+          data: {
+            orderNumber,
+            userId: validUserId,
+            customerEmail: customerInfo.email,
+            customerPhone: customerInfo.phone,
+            customerFirstName: customerInfo.firstName || null,
+            customerLastName: customerInfo.lastName || null,
+            shippingAddress: shippingAddress?.address || null,
+            shippingCity: shippingAddress?.city || null,
+            shippingCountry: shippingAddress?.country || 'Togo',
+            shippingPhone: shippingAddress?.phone || customerInfo.phone,
+            shippingLatitude: shippingAddress?.latitude ? parseFloat(shippingAddress.latitude.toString()) : null,
+            shippingLongitude: shippingAddress?.longitude ? parseFloat(shippingAddress.longitude.toString()) : null,
+            subtotal: serverSubtotal,
+            shippingCost: serverShipping,
+            discount: 0,
+            total: serverTotal,
+            status: 'pending',
+            paymentStatus: 'pending',
+            paymentMethod: paymentMethod || null,
+            items: {
+              create: pricedItems.map(({ item, unitPrice, quantity }) => ({
+                productId: item.productId as string,
+                productName: item.productName as string || item.name as string,
+                productImage: item.productImage as string || item.image as string || null,
+                colorName: item.colorName as string || null,
+                size: item.size as string,
+                quantity,
+                unitPrice,
+                totalPrice: unitPrice * quantity
+              }))
+            }
+          },
+          include: {
+            items: true
+          }
+        })
+        break // success, exit retry loop
+      } catch (createError: any) {
+        if (createError.code === 'P2002' && attempt < maxRetries - 1) {
+          // Unique constraint failed on orderNumber, retry with new number
+          continue
+        }
+        throw createError
+      }
+    }
+
+    if (!order) {
+      return NextResponse.json(
+        { error: 'Erreur lors de la création de la commande' },
+        { status: 500 }
+      )
+    }
+
+    if (validUserId) {
+      await db.cartItem.deleteMany({ where: { userId: validUserId } })
+    }
+
+    // Notification admin UNIQUEMENT — aucun email au client avant le paiement
+    // vérifié (le reçu de paiement sera son premier email) — non bloquant
+    await notifyOrderCreated(order)
+
+    return NextResponse.json({
+      message: 'Commande créée avec succès',
+      order
+    })
+  } catch (error) {
+    console.error('Create order error:', error instanceof Error ? error.message : 'unknown')
+    return NextResponse.json(
+      { error: 'Erreur lors de la création de la commande' },
+      { status: 500 }
+    )
+  }
+}
+
+// PUT - Update order (admin or status update)
+export async function PUT(request: NextRequest) {
+  try {
+    const role = request.headers.get('x-auth-role')
+    const isAdmin = role === 'admin' || role === 'manager'
+    const body = await request.json()
+    const { id, status, paymentStatus, trackingNumber, notes, estimatedDelivery } = body
+    if (id !== undefined && typeof id !== 'string') {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID commande requis' },
+        { status: 400 }
+      )
+    }
+
+    // Only admin can update most fields
+    if (!isAdmin) {
+      return NextResponse.json(
+        { error: 'Non autorisé' },
+        { status: 403 }
+      )
+    }
+
+    const updateData: Record<string, unknown> = {}
+    if (status) updateData.status = status
+    if (paymentStatus) updateData.paymentStatus = paymentStatus
+    if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber
+    if (notes !== undefined) updateData.notes = notes
+    if (estimatedDelivery !== undefined) updateData.estimatedDelivery = estimatedDelivery
+
+    const order = await db.order.update({
+      where: { id },
+      data: updateData,
+      include: {
+        items: true,
+        payments: true
+      }
+    })
+
+    return NextResponse.json({
+      message: 'Commande mise à jour',
+      order
+    })
+  } catch (error) {
+    console.error('Update order error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la mise à jour de la commande' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE - Delete order (user can delete own failed/cancelled orders, admin can delete any)
+export async function DELETE(request: NextRequest) {
+  try {
+    const role = request.headers.get('x-auth-role')
+    const userId = request.headers.get('x-auth-user-id')
+    const isAdmin = role === 'admin' || role === 'manager'
+    const body = await request.json()
+    const { id } = body
+    if (id !== undefined && typeof id !== 'string') {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID commande requis' },
+        { status: 400 }
+      )
+    }
+
+    // Find the order first
+    const order = await db.order.findUnique({
+      where: { id },
+      include: { items: true, payments: true }
+    })
+
+    if (!order) {
+      return NextResponse.json(
+        { error: 'Commande introuvable' },
+        { status: 404 }
+      )
+    }
+
+    // Check permissions: user can only delete their own failed/cancelled orders
+    if (!isAdmin) {
+      if (order.userId !== userId) {
+        return NextResponse.json(
+          { error: 'Non autorisé' },
+          { status: 403 }
+        )
+      }
+      if (!['payment_failed', 'cancelled'].includes(order.status)) {
+        return NextResponse.json(
+          { error: 'Seules les commandes échouées ou annulées peuvent être supprimées' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Delete related payments first
+    if (order.payments && order.payments.length > 0) {
+      await db.payment.deleteMany({ where: { orderId: id } })
+    }
+
+    // Delete related order items
+    await db.orderItem.deleteMany({ where: { orderId: id } })
+
+    // Delete the order
+    await db.order.delete({ where: { id } })
+
+    return NextResponse.json({
+      message: 'Commande supprimée avec succès'
+    })
+  } catch (error) {
+    console.error('Delete order error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression de la commande' },
+      { status: 500 }
+    )
+  }
+}

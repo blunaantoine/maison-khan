@@ -1,0 +1,319 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { verifySession, readSessionCookie } from '@/lib/auth'
+
+/**
+ * Middleware RBAC — Maison Khan
+ *
+ * Protège les routes API sensibles en vérifiant le JWT dans le cookie
+ * HttpOnly AVANT que la route ne s'exécute (edge runtime).
+ *
+ * Matrice de permissions :
+ *
+ *   /api/admin/*         → manager + admin
+ *   /api/admin/users/*   → admin seulement
+ *   /api/notifications/* → manager + admin (centre de notifications)
+ *   /api/email-logs/*    → manager + admin (journal des emails)
+ *   /api/client/notifications/* → client authentifié (cloche 🔔)
+ *   /api/orders  (POST)  → client authentifié
+ *   /api/cart            → client authentifié
+ *   /api/addresses       → client authentifié
+ *
+ * Note : le middleware valide le JWT, mais la vérification finale du
+ * rôle en base de données est faite par getAuthUser() dans chaque route.
+ * C'est une défense en profondeur : même si le middleware est contourné,
+ * la route re-vérifie.
+ */
+
+// Simple in-memory rate limiter for auth endpoints (per IP).
+// Note: this resets on every cold start, but it's enough to slow down
+// brute-force attacks in production. For a more robust solution, use
+// Upstash Ratelimit or similar.
+const authAttempts = new Map<string, { count: number; reset: number }>()
+const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minute
+const RATE_LIMIT_MAX = 10 // 10 attempts per minute per IP
+
+function rateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = authAttempts.get(ip)
+  if (!entry || entry.reset < now) {
+    authAttempts.set(ip, { count: 1, reset: now + RATE_LIMIT_WINDOW_MS })
+    return true
+  }
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return false
+  }
+  entry.count += 1
+  return true
+}
+
+// Limiteur générique par IP + groupe de routes (mémoire de l'instance).
+const genericHits = new Map<string, { count: number; reset: number }>()
+function hit(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now()
+  if (genericHits.size > 5000) {
+    for (const [k, v] of genericHits) if (v.reset < now) genericHits.delete(k)
+  }
+  const entry = genericHits.get(key)
+  if (!entry || entry.reset < now) {
+    genericHits.set(key, { count: 1, reset: now + windowMs })
+    return true
+  }
+  if (entry.count >= max) return false
+  entry.count += 1
+  return true
+}
+
+// Routes appelées par les prestataires (webhooks/IPN) : jamais limitées par IP
+const PROVIDER_CALLBACKS = [
+  '/api/paydunya/callback',
+  '/api/paygate/callback',
+  '/api/kprimepay/webhook',
+  '/api/webhooks/resend',
+]
+
+function getClientIp(req: NextRequest): string {
+  const xff = req.headers.get('x-forwarded-for')
+  if (xff) return xff.split(',')[0].trim()
+  const xreal = req.headers.get('x-real-ip')
+  if (xreal) return xreal
+  return 'unknown'
+}
+
+/**
+ * Copie des en-têtes de la requête SANS aucune identité injectée par le client.
+ * Les routes font confiance à x-auth-user-id / x-auth-role : seul le middleware
+ * (après vérification du JWT) a le droit de les poser. Sans ce nettoyage, une
+ * requête GET /api/cart avec « x-auth-user-id: <id d'un autre> » lisait le
+ * panier de n'importe qui.
+ */
+function withoutAuthHeaders(req: NextRequest): Headers {
+  const h = new Headers(req.headers)
+  h.delete('x-auth-user-id')
+  h.delete('x-auth-role')
+  h.delete('x-auth-email')
+  return h
+}
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+  const method = req.method.toUpperCase()
+
+  // ──────────────────────────────────────────────────────────────
+  // 0. Limitation de débit (anti abus / consommation de ressources)
+  // ──────────────────────────────────────────────────────────────
+  if (!PROVIDER_CALLBACKS.some((p) => pathname.startsWith(p))) {
+    const ip = getClientIp(req)
+    const isWrite = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+    const isPayment =
+      pathname.startsWith('/api/kprimepay/') ||
+      pathname.startsWith('/api/paydunya') ||
+      pathname.startsWith('/api/paygate') ||
+      pathname.startsWith('/api/payments/')
+    let allowed = true
+    if (pathname === '/api/orders' && method === 'POST') {
+      allowed = hit(`orders:${ip}`, 10, 60_000)
+    } else if (isPayment && isWrite) {
+      allowed = hit(`pay:${ip}`, 20, 60_000)
+    } else if (pathname === '/api/push/subscribe' && isWrite) {
+      allowed = hit(`push:${ip}`, 20, 60_000)
+    } else if (isWrite) {
+      allowed = hit(`write:${ip}`, 120, 60_000)
+    } else {
+      allowed = hit(`read:${ip}`, 600, 60_000)
+    }
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Trop de requêtes. Réessayez dans une minute.' },
+        { status: 429, headers: { 'Retry-After': '60' } }
+      )
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 1. Rate-limit auth endpoints (login, register, forgot-password)
+  // ──────────────────────────────────────────────────────────────
+  if (
+    pathname === '/api/auth/login' ||
+    pathname === '/api/auth/register' ||
+    pathname === '/api/auth/forgot-password'
+  ) {
+    const ip = getClientIp(req)
+    if (!rateLimit(ip)) {
+      return NextResponse.json(
+        {
+          error:
+            'Trop de tentatives. Réessayez dans une minute.',
+        },
+        { status: 429 }
+      )
+    }
+    // Don't return — let the request go through to the route handler.
+    return NextResponse.next({ request: { headers: withoutAuthHeaders(req) } })
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 2. Admin routes — require manager or admin role
+  // ──────────────────────────────────────────────────────────────
+  const isAdminPanelRoute =
+    pathname.startsWith('/api/admin/') ||
+    pathname.startsWith('/api/notifications') ||
+    pathname.startsWith('/api/email-logs')
+
+  if (isAdminPanelRoute) {
+    const token = readSessionCookie(req)
+    const session = await verifySession(token)
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Authentification requise' },
+        { status: 401 }
+      )
+    }
+
+    const role = session.role
+    // /api/admin/users is admin-only
+    if (pathname.startsWith('/api/admin/users')) {
+      if (role !== 'admin') {
+        return NextResponse.json(
+          { error: 'Accès réservé aux administrateurs' },
+          { status: 403 }
+        )
+      }
+    } else {
+      // Other /api/admin/* require manager or admin
+      if (role !== 'admin' && role !== 'manager') {
+        return NextResponse.json(
+          { error: 'Accès interdit — permissions insuffisantes' },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Inject the user id + role into request headers so the route can
+    // read them WITHOUT needing to re-verify the JWT. The route will
+    // STILL fetch the user from DB to confirm isActive + role.
+    const requestHeaders = withoutAuthHeaders(req)
+    requestHeaders.set('x-auth-user-id', session.sub)
+    requestHeaders.set('x-auth-role', session.role)
+    requestHeaders.set('x-auth-email', session.email)
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 3. Admin-only write routes (products, slides, content, settings, menu, subcategories, variants)
+  //    These are not under /api/admin/ but need admin protection on writes.
+  // ──────────────────────────────────────────────────────────────
+  const isAdminWriteRoute =
+    (pathname === '/api/products' && method !== 'GET') ||
+    (pathname === '/api/slides' && method !== 'GET') ||
+    (pathname === '/api/content' && method !== 'GET') ||
+    (pathname === '/api/menu' && method !== 'GET') ||
+    (pathname === '/api/subcategories' && method !== 'GET') ||
+    (pathname === '/api/variants' && method !== 'GET') ||
+    pathname.startsWith('/api/settings/') && method !== 'GET'
+
+  if (isAdminWriteRoute) {
+    const token = readSessionCookie(req)
+    const session = await verifySession(token)
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Authentification requise' },
+        { status: 401 }
+      )
+    }
+
+    if (session.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Accès réservé aux administrateurs' },
+        { status: 403 }
+      )
+    }
+
+    const requestHeaders = withoutAuthHeaders(req)
+    requestHeaders.set('x-auth-user-id', session.sub)
+    requestHeaders.set('x-auth-role', session.role)
+    requestHeaders.set('x-auth-email', session.email)
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 4. User-only routes — require authenticated customer
+  // ──────────────────────────────────────────────────────────────
+  const isUserRoute =
+    (pathname.startsWith('/api/cart') && method !== 'GET') ||
+    pathname.startsWith('/api/addresses') ||
+    pathname.startsWith('/api/client/notifications') ||
+    (pathname === '/api/orders' && method === 'GET') ||
+    pathname.startsWith('/api/push/subscribe')
+
+  if (isUserRoute) {
+    const token = readSessionCookie(req)
+    const session = await verifySession(token)
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Authentification requise' },
+        { status: 401 }
+      )
+    }
+
+    const requestHeaders = withoutAuthHeaders(req)
+    requestHeaders.set('x-auth-user-id', session.sub)
+    requestHeaders.set('x-auth-role', session.role)
+    requestHeaders.set('x-auth-email', session.email)
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 4bis. /api/orders (POST/PUT/DELETE) — session OPTIONNELLE.
+  // Le checkout doit rester accessible aux invités, mais si une session
+  // valide existe on injecte l'identité VÉRIFIÉE (en écrasant tout header
+  // spoofé) pour rattacher la commande au compte du client — sans cela,
+  // les notifications in-app et push du client ne pourraient pas être
+  // envoyées (order.userId = null). Anti-spoof : le header ne vient
+  // JAMAIS du client, uniquement du JWT vérifié ici.
+  // ──────────────────────────────────────────────────────────────
+  if (pathname === '/api/orders' && method !== 'GET') {
+    const token = readSessionCookie(req)
+    const session = await verifySession(token)
+    if (session) {
+      const requestHeaders = withoutAuthHeaders(req)
+      requestHeaders.set('x-auth-user-id', session.sub)
+      requestHeaders.set('x-auth-role', session.role)
+      requestHeaders.set('x-auth-email', session.email)
+      return NextResponse.next({
+        request: { headers: requestHeaders },
+      })
+    }
+    // Sans session : on RETIRE tout header d'identité envoyé par le client
+    // pour empêcher l'usurpation (un invité ne peut pas rattacher une commande
+    // au compte de quelqu'un d'autre).
+    return NextResponse.next({ request: { headers: withoutAuthHeaders(req) } })
+  }
+
+  // GET /api/cart : session OPTIONNELLE (panier invité via x-session-id), mais
+  // si le client est connecté on injecte son identité VÉRIFIÉE.
+  if (pathname === '/api/cart' && method === 'GET') {
+    const session = await verifySession(readSessionCookie(req))
+    const requestHeaders = withoutAuthHeaders(req)
+    if (session) requestHeaders.set('x-auth-user-id', session.sub)
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
+
+  // Toute autre route API : aucune identité n'est injectée, et celles que le
+  // client aurait forgées sont supprimées.
+  return NextResponse.next({ request: { headers: withoutAuthHeaders(req) } })
+}
+
+export const config = {
+  // Toutes les routes API passent par le middleware : il supprime les en-têtes
+  // d'identité forgés (x-auth-*) et applique le contrôle d'accès ci-dessus.
+  matcher: ['/api/:path*'],
+}
