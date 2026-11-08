@@ -15,6 +15,11 @@ info() { echo "→ $1"; }
 echo "═══════════ RÉPARATION MAISON KHAN ═══════════"
 cd /var/www/maison-khan || { bad "Dossier /var/www/maison-khan introuvable"; exit 1; }
 
+# URL publique du site (lue dans .env : change de domaine sans modifier ce script)
+SITE_URL=$(grep -E '^NEXT_PUBLIC_BASE_URL=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | sed 's#/*$##')
+SITE_URL=${SITE_URL:-https://shop.maison-khan.com}
+SITE_HOST=${SITE_URL#*://}
+
 # ── 1. Nettoyage .env : dédoublonner les clés MISTRAL ──
 # (les collages dans la console web ont pu créer des doublons)
 for VAR in MISTRAL_API_KEY MISTRAL_VISION_MODEL; do
@@ -82,16 +87,16 @@ else
   bad "APPLICATION — ne répond toujours pas"
   info "Logs à m'envoyer : pm2 logs maison-khan --lines 30 --nostream"
 fi
-CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://shop.maison-khan.com 2>/dev/null)
+CODE=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$SITE_URL" 2>/dev/null)
 CODE=${CODE:-000}
 case "$CODE" in
   200|301|302|307|308)
-    ok "SITE WEB — https://shop.maison-khan.com répond (HTTP $CODE)"
+    ok "SITE WEB — $SITE_URL répond (HTTP $CODE)"
     echo ""
     echo "🎉 C'EST RÉPARÉ ! Rafraîchis ton navigateur (Ctrl+F5)"
     ;;
   *)
-    bad "SITE WEB — shop.maison-khan.com : HTTP $CODE (ou pas de réponse)"
+    bad "SITE WEB — $SITE_HOST : HTTP $CODE (ou pas de réponse)"
     info "Envoie-moi une capture d'écran de tout cet écran"
     ;;
 esac

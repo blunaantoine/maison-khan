@@ -2,7 +2,7 @@ import { Resend } from 'resend'
 
 // Email addresses - using verified domain (configurable via .env)
 const FROM_EMAIL = process.env.EMAIL_FROM || 'contact@maison-khan.com'
-const REPLY_TO = 'technique@maison-khan.com' // Admin email for replies
+const REPLY_TO = process.env.EMAIL_REPLY_TO || 'technique@maison-khan.com' // Admin email for replies (configurable via .env)
 const BRAND_NAME = 'MAISON KHAN'
 
 interface SendEmailOptions {
