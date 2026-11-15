@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyOrderCreated } from '@/lib/notify'
+import { isSiteClosed, isStaffVisitor } from '@/lib/site-access'
 
 // Generate unique order number with timestamp to avoid collisions
 const generateOrderNumber = async () => {
@@ -234,6 +235,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Site fermé au public : seules les commandes de l'équipe (tests) passent
+    if (await isSiteClosed() && !(await isStaffVisitor())) {
+      return NextResponse.json(
+        { error: 'La boutique ouvre très prochainement : les commandes ne sont pas encore ouvertes.' },
+        { status: 503 }
+      )
+    }
     const userId = request.headers.get('x-auth-user-id')
     const validUserId = userId && userId !== '' ? userId : null  // <-- AJOUTEZ CETTE LIGNE
     

@@ -3,6 +3,12 @@ import { Cormorant_Garamond, Outfit } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import CookieConsent from "@/components/consent/cookie-consent";
+import { SiteClosed } from "@/components/site/SiteClosed";
+import { isSiteClosed, isStaffVisitor } from "@/lib/site-access";
+
+// Rendu à chaque requête : l'ouverture / fermeture du site au public (bouton du
+// panneau admin) doit s'appliquer immédiatement, et dépend du visiteur connecté.
+export const dynamic = "force-dynamic";
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-display",
@@ -105,11 +111,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Site fermé au public : page « Ouverture très prochaine », sauf pour les
+  // admins / managers connectés (qui voient un rappel en bas de l'écran).
+  const siteClosed = await isSiteClosed();
+  const closedForVisitor = siteClosed && !(await isStaffVisitor());
+
   return (
     <html lang="fr" suppressHydrationWarning>
       <head>
@@ -137,9 +148,23 @@ export default function RootLayout({
         className={`${cormorant.variable} ${outfit.variable} antialiased bg-[#F8F6F3] text-[#0A0A0A]`}
         style={{ fontFamily: "'Outfit', sans-serif" }}
       >
-        {children}
+        {closedForVisitor ? (
+          <>
+            <meta name="robots" content="noindex" />
+            <SiteClosed />
+          </>
+        ) : (
+          <>
+            {siteClosed && (
+              <div className="fixed bottom-4 left-4 z-[95] bg-[#B91C1C] text-white text-xs px-4 py-2 shadow-lg pointer-events-none">
+                🔒 Site fermé au public — seule l&apos;équipe voit la boutique
+              </div>
+            )}
+            {children}
+            <CookieConsent />
+          </>
+        )}
         <Toaster />
-        <CookieConsent />
       </body>
     </html>
   );

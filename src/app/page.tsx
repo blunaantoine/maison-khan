@@ -16,6 +16,7 @@ import { checkPushState, subscribeToPush, unsubscribeFromPush, syncPushSubscript
 const AdminDashboard = dynamic(() => import('@/components/admin/AdminDashboard').then(m => m.AdminDashboard), { ssr: false })
 const AdminOrdersTab = dynamic(() => import('@/components/admin/AdminOrdersTab').then(m => m.AdminOrdersTab), { ssr: false })
 const AdminUsersTab = dynamic(() => import('@/components/admin/AdminUsersTab').then(m => m.AdminUsersTab), { ssr: false })
+const SiteAccessToggle = dynamic(() => import('@/components/admin/SiteAccessToggle').then(m => m.SiteAccessToggle), { ssr: false })
 const AdminNotificationsTab = dynamic(() => import('@/components/admin/AdminNotificationsTab').then(m => m.AdminNotificationsTab), { ssr: false })
 const AdminEmailsTab = dynamic(() => import('@/components/admin/AdminEmailsTab').then(m => m.AdminEmailsTab), { ssr: false })
 const NotificationBell = dynamic(() => import('@/components/notifications/NotificationBell').then(m => m.NotificationBell), { ssr: false })
@@ -3814,6 +3815,11 @@ export default function Home() {
                   <p className="font-display text-3xl text-[#0A0A0A]" style={{ fontFamily: "'Cormorant Garamond', serif" }}>{heroSlides.length}</p>
                 </div>
               </div>
+
+              {/* Ouvrir / fermer le site au public (bouton admin) */}
+              {(user?.role === 'admin' || user?.role === 'manager') && (
+                <SiteAccessToggle canEdit={user?.role === 'admin'} />
+              )}
 
               {/* Admin Tabs */}
               <div className="flex flex-wrap gap-4 border-b border-[#E5E0DA] mb-8">
