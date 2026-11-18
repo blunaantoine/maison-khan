@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 
 /**
  * Page affichée aux visiteurs quand le site est fermé au public.
- * Un lien discret permet aux admins / managers de se connecter.
+ * Aucun lien de connexion n'y est visible : l'équipe se connecte via
+ * l'adresse /connexion (non affichée), qui montre le formulaire.
  */
 export function SiteClosed() {
-  const [showLogin, setShowLogin] = useState(false)
+  const showLogin = usePathname() === '/connexion'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +32,7 @@ export function SiteClosed() {
       } else if (data.user?.role !== 'admin' && data.user?.role !== 'manager') {
         setError('Accès réservé à l\'équipe Maison Khan')
       } else {
-        window.location.reload()
+        window.location.href = '/'
       }
     } catch {
       setError('Erreur de connexion. Réessayez.')
@@ -61,15 +63,7 @@ export function SiteClosed() {
         </p>
 
         <div className="mt-16">
-          {!showLogin ? (
-            <button
-              type="button"
-              onClick={() => setShowLogin(true)}
-              className="text-xs text-[#B8B4AE] hover:text-[#6B6560] underline underline-offset-4"
-            >
-              Accès administrateur
-            </button>
-          ) : (
+          {showLogin && (
             <form onSubmit={login} className="max-w-sm mx-auto space-y-3 text-left">
               <input
                 type="email"
