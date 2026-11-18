@@ -238,7 +238,7 @@ EOF
     exit 1
   }
 
-  nginx_ok || rollback "Configuration nginx invalide : $("$NGINX_BIN" -t 2>&1 | grep -m1 emerg)"
+  nginx_ok || rollback "Configuration nginx invalide : $("$NGINX_BIN" -t 2>&1 | grep -vE "syntax is ok|test is successful" | tail -3)"
   reload_nginx || rollback "Rechargement de nginx impossible"
   ok "Boutique publique fermée : page « Ouverture très prochaine » active"
 
@@ -306,10 +306,12 @@ $AUTH_LINES
 }
 EOF
   if ! nginx_ok; then
+    ERR=$("$NGINX_BIN" -t 2>&1 | grep -vE "syntax is ok|test is successful" | tail -5)
     write_work_http
     nginx_ok && reload_nginx
     echo "$FOUND|$BACKUP|$WORK" > "$STATE"
-    bad "Configuration de l'adresse de travail invalide : $("$NGINX_BIN" -t 2>&1 | grep -m1 emerg)"
+    bad "Configuration de l'adresse de travail invalide :"
+    echo "$ERR"
     exit 1
   fi
   reload_nginx
@@ -337,10 +339,13 @@ do_off() {
   rm -f "$ENABLED/$PUBLIC_CONF"
   for f in $FOUND; do cp -a "$BACKUP/$f" "$ENABLED/$f"; done
   if ! nginx_ok; then
+    ERR=$("$NGINX_BIN" -t 2>&1 | grep -vE "syntax is ok|test is successful" | tail -5)
     for f in $FOUND; do rm -f "$ENABLED/$f"; done
     ln -sf "$AVAILABLE/$PUBLIC_CONF" "$ENABLED/$PUBLIC_CONF"
-    bad "Configuration invalide après restauration : $("$NGINX_BIN" -t 2>&1 | grep -m1 emerg)"
-    info "La boutique reste fermée. Envoie-moi ce message."
+    bad "Configuration invalide après restauration :"
+    echo "$ERR"
+    info "Fichiers restaurés testés : $(for f in $FOUND; do printf '%s ' "$BACKUP/$f"; done)"
+    info "La boutique reste fermée (rien n'a changé). Envoie-moi ce message."
     exit 1
   fi
   reload_nginx
