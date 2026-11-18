@@ -46,6 +46,7 @@ ENABLED="$NGINX_DIR/sites-enabled"
 STATE="$NGINX_DIR/maison-khan-maintenance.state"
 PUBLIC_CONF="maison-khan-fermee"   # page « Ouverture très prochaine »
 WORK_CONF="maison-khan-travail"    # adresse de travail (boutique réelle)
+OPEN_CONF="maison-khan-public"     # configuration propre des domaines publics (si les anciens fichiers ne passent plus)
 # Fichiers nginx actuels de la boutique publique (remplacés pendant la fermeture)
 PUBLIC_FILES="maison-khan maison-khan-apex"
 
@@ -328,6 +329,43 @@ EOF
   echo "═══════════ FIN ═══════════"
 }
 
+# Configuration propre des domaines publics → l'application (même certificats).
+# Le domaine de NEXT_PUBLIC_BASE_URL sert la boutique, les autres y redirigent.
+write_open_public() {
+  BK="$1"
+  CANON=$(grep -E '^NEXT_PUBLIC_BASE_URL=' "$APP_DIR/.env" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | sed -e 's#^[a-z]*://##' -e 's#/.*##')
+  awk '{print $1}' "$BK/hosts-publics.txt" | grep -qx "$CANON" || CANON=$(awk 'NR==1{print $1}' "$BK/hosts-publics.txt")
+  snippet_proxy
+  {
+    echo "# MAISON KHAN — domaines publics (généré par scripts/maintenance.sh off)"
+    awk '{print $1}' "$BK/hosts-publics.txt" | sort -u | while read -r h; do
+      echo "server {"
+      echo "    listen 80;"
+      [ -n "$V6_80" ] && echo "$V6_80"
+      echo "    server_name $h;"
+      echo "    location /.well-known/acme-challenge/ { root $ACME_ROOT; }"
+      echo "    location / { return 301 https://\$host\$request_uri; }"
+      echo "}"
+    done
+    sort -u -k1,1 "$BK/hosts-publics.txt" | while read -r h cert key; do
+      echo "server {"
+      echo "    listen 443 ssl;"
+      [ -n "$V6_443" ] && echo "$V6_443"
+      echo "    server_name $h;"
+      echo "    ssl_certificate $cert;"
+      echo "    ssl_certificate_key $key;"
+      [ -f /etc/letsencrypt/options-ssl-nginx.conf ] && echo "    include /etc/letsencrypt/options-ssl-nginx.conf;"
+      if [ "$h" = "$CANON" ]; then
+        echo "    client_max_body_size 16M;"
+        echo "    location / { include $NGINX_DIR/snippets/maison-khan-proxy.conf; }"
+      else
+        echo "    return 301 https://$CANON\$request_uri;"
+      fi
+      echo "}"
+    done
+  } > "$AVAILABLE/$OPEN_CONF"
+}
+
 # ─────────────────────────────── OFF ──────────────────────────────
 do_off() {
   [ -f "$STATE" ] || { info "La boutique n'est pas fermée : rien à faire."; exit 0; }
@@ -339,14 +377,25 @@ do_off() {
   rm -f "$ENABLED/$PUBLIC_CONF"
   for f in $FOUND; do cp -a "$BACKUP/$f" "$ENABLED/$f"; done
   if ! nginx_ok; then
-    ERR=$("$NGINX_BIN" -t 2>&1 | grep -vE "syntax is ok|test is successful" | tail -5)
+    ERR=$("$NGINX_BIN" -t 2>&1 | grep -vE "syntax is ok|test is successful" | tail -3)
     for f in $FOUND; do rm -f "$ENABLED/$f"; done
-    ln -sf "$AVAILABLE/$PUBLIC_CONF" "$ENABLED/$PUBLIC_CONF"
-    bad "Configuration invalide après restauration :"
+    info "Les anciens fichiers nginx ne passent plus le test :"
     echo "$ERR"
-    info "Fichiers restaurés testés : $(for f in $FOUND; do printf '%s ' "$BACKUP/$f"; done)"
-    info "La boutique reste fermée (rien n'a changé). Envoie-moi ce message."
-    exit 1
+    info "génération d'une configuration propre pour les domaines publics"
+    if [ -s "$BACKUP/hosts-publics.txt" ]; then
+      write_open_public "$BACKUP"
+      ln -sf "$AVAILABLE/$OPEN_CONF" "$ENABLED/$OPEN_CONF"
+    fi
+    if ! nginx_ok; then
+      ERR2=$("$NGINX_BIN" -t 2>&1 | grep -vE "syntax is ok|test is successful" | tail -3)
+      rm -f "$ENABLED/$OPEN_CONF"
+      ln -sf "$AVAILABLE/$PUBLIC_CONF" "$ENABLED/$PUBLIC_CONF"
+      bad "La configuration propre est aussi refusée :"
+      echo "$ERR2"
+      info "La boutique reste fermée (rien n'a changé). Envoie-moi ce message."
+      exit 1
+    fi
+    ok "Configuration propre active ($AVAILABLE/$OPEN_CONF) ; anciens fichiers gardés dans $BACKUP"
   fi
   reload_nginx
   rm -f "$STATE"
