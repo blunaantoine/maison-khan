@@ -117,11 +117,11 @@ export async function GET(request: NextRequest) {
     //    si l'email correspond à un compte existant, il appartient à cette personne)
     let user = await db.user.findUnique({ where: { email } })
 
-    // Un compte admin/manager ne se connecte JAMAIS par rattachement d'e-mail
-    // OAuth (défense contre la prise de contrôle d'un compte privilégié).
+    // Comptes admin / manager : connexion Google autorisée, car Google n'envoie
+    // que des e-mails vérifiés (email_verified contrôlé plus haut) — quelqu'un
+    // qui contrôle cette boîte pourrait de toute façon réinitialiser le mot de passe.
     if (user && user.role !== 'customer') {
-      console.error('[GOOGLE-AUTH] Compte privilégié : connexion par mot de passe uniquement')
-      return redirectError(siteBaseUrl)
+      console.log(`[GOOGLE-AUTH] Connexion Google d'un compte ${user.role} :`, email)
     }
 
     if (!user) {
